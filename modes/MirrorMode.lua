@@ -1,5 +1,5 @@
 -- modes/MirrorMode.lua
--- Режим Зеркала [R] 1:1 по PortraitClient и PortraitTwinTool
+-- Режим Зеркала [R]: поднятая рука с предметом + синхрон Inspect/Equip + плавная ходьба
 
 return function(API)
     local Players = game:GetService("Players")
@@ -17,11 +17,17 @@ return function(API)
     local smoothStrafeX = 0
     local armMirrorPairs = {}
 
-    -- Зеркалим правую руку игрока в левую руку клона (как JOINT_SWAP в PortraitShared)
     local ARM_SWAP = {
         LeftShoulder = "RightShoulder",
         LeftElbow    = "RightElbow",
         LeftWrist    = "RightWrist",
+    }
+
+    -- Базовые углы поднятия руки с предметом (как в DOORS Movement при удержании Tool)
+    local BASE_HOLD_OFFSETS = {
+        LeftShoulder = CFrame.Angles(math.rad(62), math.rad(8), math.rad(-6)),
+        LeftElbow    = CFrame.Angles(math.rad(28), 0, 0),
+        LeftWrist    = CFrame.Angles(math.rad(-10), 0, 0),
     }
 
     local function rebuildArmMirror()
@@ -38,7 +44,12 @@ return function(API)
         end
         for _, d in ipairs(clone:GetDescendants()) do
             if d:IsA("Motor6D") and ARM_SWAP[d.Name] and srcMap[ARM_SWAP[d.Name]] then
-                table.insert(armMirrorPairs, { dst = d, src = srcMap[ARM_SWAP[d.Name]] })
+                table.insert(armMirrorPairs, {
+                    name = d.Name,
+                    dst = d,
+                    src = srcMap[ARM_SWAP[d.Name]],
+                    holdOffset = BASE_HOLD_OFFSETS[d.Name] or CFrame.identity
+                })
             end
         end
     end
@@ -59,7 +70,6 @@ return function(API)
                 lockedFloorY = cloneCF.Position.Y
             end
 
-            -- Вешаем предмет в левую руку БЕЗ статичного трека, чтобы рука свободно повторяла Inspect/Equip игрока
             API.AttachTool(true, true)
             lastToolName = (myChar and myChar:FindFirstChildOfClass("Tool") and myChar:FindFirstChildOfClass("Tool").Name) or ""
             rebuildArmMirror()
@@ -89,7 +99,7 @@ return function(API)
             local newCF = CFrame.new(reflectedCF.X, floorY, reflectedCF.Z) * reflectedCF.Rotation
             API.SetCFrame(newCF)
 
-            -- 2. Определяем ходьбу vs бег по реальному WalkSpeed игрока (в DOORS ходьба <= 16, бег >= 20)
+            -- 2. Определяем ходьбу vs бег по WalkSpeed игрока
             local movedVec = Vector3.zero
             if lastClonePos then
                 movedVec = (newCF.Position - lastClonePos) * Vector3.new(1, 0, 1)
@@ -109,7 +119,7 @@ return function(API)
             end
             API.UpdateAnimation(smoothedSpeed, playerSprinting)
 
-            -- 3. Плавный поворот таза/торса при движении влево-вправо (как u432.x в Movement DOORS)
+            -- 3. Плавный поворот таза/торса при движении влево-вправо
             local moveDir = (movedVec.Magnitude > 0.001) and movedVec.Unit or Vector3.zero
             local rawStrafe = newCF.RightVector:Dot(moveDir) * (isMoving and 1 or 0)
             smoothStrafeX = smoothStrafeX + (rawStrafe - smoothStrafeX) * math.clamp(dt * 10, 0, 1)
@@ -137,7 +147,7 @@ return function(API)
             local clone = API.GetClone()
             if not clone then return end
 
-            -- 1. Лёгкий естественный разворот таза и торса при стрейфе (строки 1762-1772 Movement)
+            -- 1. Естественный разворот таза и торса при стрейфе
             if math.abs(smoothStrafeX) > 0.01 then
                 local rootMotor = clone:FindFirstChild("Root", true)
                 local waistMotor = clone:FindFirstChild("Waist", true)
@@ -149,11 +159,12 @@ return function(API)
                 end
             end
 
-            -- 2. Зеркалим правую руку игрока в левую руку клона, когда в руках есть предмет (Inspect / Equip / Hold)
+            -- 2. Поднимаем руку с предметом + зеркалим анимации Inspect / Equip поверх базового положения
             if lastToolName ~= "" then
                 for _, pair in ipairs(armMirrorPairs) do
                     if pair.dst.Parent and pair.src.Parent then
-                        pair.dst.Transform = MirrorLib.MirrorTransform(pair.src.Transform)
+                        local mirroredAnim = MirrorLib.MirrorTransform(pair.src.Transform)
+                        pair.dst.Transform = pair.holdOffset * mirroredAnim
                     end
                 end
             end
