@@ -33,86 +33,96 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local sourceTool = sourceChar:FindFirstChildOfClass("Tool")
     if not sourceTool then return end
 
-    local targetHand = isMirrored
-        and (clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm"))
-        or (clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm"))
-    if not targetHand then return end
-
-    local srcHandleMotor = nil
-    for _, desc in ipairs(sourceChar:GetDescendants()) do
-        if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) and (desc.Name == "Handle" or desc.Name == "RightGrip") then
-            srcHandleMotor = desc
-            break
-        end
-    end
-
-    sourceTool.Archivable = true
-    local clonedTool = sourceTool:Clone()
-    sourceTool.Archivable = false
-    if not clonedTool then return end
-
-    local srcToolMotors = {}
-    for _, d in ipairs(sourceTool:GetDescendants()) do
-        if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then srcToolMotors[d.Name] = d end
-    end
-
-    for _, d in ipairs(clonedTool:GetDescendants()) do
-        if d:IsA("LocalScript") or d:IsA("Script") then d:Destroy()
-        elseif d:IsA("BasePart") then
-            d.CanCollide, d.CanTouch, d.CanQuery, d.Massless, d.Anchored, d.LocalTransparencyModifier = false, false, false, true, false, 0
-            if isMirrored and isPortraitRig then
-                d.Color = Color3.fromRGB(169, 167, 180)
-                d.Material = Enum.Material.Marble
-                d.MaterialVariant = "MarbleSlab"
-                if d:IsA("MeshPart") then d.TextureID = "" end
+    task.spawn(function()
+        -- Ждём до 0.5 сек, пока DOORS создаст Motor6D "Handle" и догрузит все меши предмета
+        local srcHandleMotor = nil
+        for _ = 1, 30 do
+            if not clone.Parent or not sourceTool.Parent then return end
+            for _, desc in ipairs(sourceChar:GetDescendants()) do
+                if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) and (desc.Name == "Handle" or desc.Name == "RightGrip") then
+                    srcHandleMotor = desc
+                    break
+                end
             end
-        elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0
-        elseif (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and srcToolMotors[d.Name] then
-            table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = isMirrored })
+            if srcHandleMotor then break end
+            task.wait()
         end
-    end
-    clonedTool.Parent = clone
 
-    local targetPart = clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
-    if not targetPart then return end
+        if not clone.Parent or not sourceTool.Parent then return end
+        table.clear(cachedToolSyncs)
 
-    -- Удаляем внешние сварки, которые держали предмет в руке оригинала (из-за них предмет мог зависать в воздухе)
-    for _, desc in ipairs(clonedTool:GetDescendants()) do
-        if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
-            if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
-                desc:Destroy()
+        local targetHand = isMirrored
+            and (clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm"))
+            or (clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm"))
+        if not targetHand then return end
+
+        sourceTool.Archivable = true
+        local clonedTool = sourceTool:Clone()
+        sourceTool.Archivable = false
+        if not clonedTool then return end
+
+        local srcToolMotors = {}
+        for _, d in ipairs(sourceTool:GetDescendants()) do
+            if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then srcToolMotors[d.Name] = d end
+        end
+
+        for _, d in ipairs(clonedTool:GetDescendants()) do
+            if d:IsA("LocalScript") or d:IsA("Script") then d:Destroy()
+            elseif d:IsA("BasePart") then
+                d.CanCollide, d.CanTouch, d.CanQuery, d.Massless, d.Anchored, d.LocalTransparencyModifier = false, false, false, true, false, 0
+                if isMirrored and isPortraitRig then
+                    d.Color = Color3.fromRGB(169, 167, 180)
+                    d.Material = Enum.Material.Marble
+                    d.MaterialVariant = "MarbleSlab"
+                    if d:IsA("MeshPart") then d.TextureID = "" end
+                end
+            elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0
+            elseif (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and srcToolMotors[d.Name] then
+                table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = isMirrored })
             end
         end
-    end
+        clonedTool.Parent = clone
 
-    if isMirrored and srcHandleMotor then
-        targetPart.Anchored = true
-        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
-        local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
-        table.insert(cachedToolSyncs, {
-            isDriver = true,
-            part = targetPart,
-            hand = targetHand,
-            src = srcHandleMotor,
-            gripInv = gripInv
-        })
-        return
-    end
+        local targetPart = clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
+        if not targetPart then return end
 
-    local newJoint = Instance.new("Motor6D")
-    if srcHandleMotor then
-        newJoint.Name = "Handle"
-        newJoint.Part0 = targetHand
-        newJoint.Part1 = targetPart
-        newJoint.C0 = srcHandleMotor.C0
-        newJoint.C1 = srcHandleMotor.C1
-        table.insert(cachedToolSyncs, { dst = newJoint, src = srcHandleMotor, mirror = false })
-    else
-        newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", targetHand, targetPart
-        newJoint.C0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-        newJoint.C1 = clonedTool.Grip
-    end
-    newJoint.Parent = targetHand
+        for _, desc in ipairs(clonedTool:GetDescendants()) do
+            if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
+                if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
+                    desc:Destroy()
+                end
+            end
+        end
+
+        if isMirrored and srcHandleMotor then
+            targetPart.Anchored = true
+            local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
+            local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
+            table.insert(cachedToolSyncs, {
+                isDriver = true,
+                part = targetPart,
+                hand = targetHand,
+                src = srcHandleMotor,
+                gripInv = gripInv
+            })
+            return
+        end
+
+        local newJoint = Instance.new("Motor6D")
+        if srcHandleMotor then
+            newJoint.Name = "Handle"
+            newJoint.Part0 = targetHand
+            newJoint.Part1 = targetPart
+            newJoint.C0 = srcHandleMotor.C0
+            newJoint.C1 = srcHandleMotor.C1
+            table.insert(cachedToolSyncs, { dst = newJoint, src = srcHandleMotor, mirror = false })
+        else
+            newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", targetHand, targetPart
+            newJoint.C0 = CFrame.new(0, -0.15, 0)
+            newJoint.C1 = clonedTool.Grip
+        end
+        newJoint.Parent = targetHand
+    end)
 end
 
 function RigLib.PlayToolTrack(clone, tracks, skipToolTrack)

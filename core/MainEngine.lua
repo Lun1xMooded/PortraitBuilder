@@ -76,9 +76,7 @@ return function(Import, Config)
                 if s.part.Parent and s.hand.Parent and s.src.Parent then
                     local c0 = s.gripInv and (s.src.C0 * s.gripInv) or s.src.C0
                     local rel = c0 * s.src.Transform * s.src.C1:Inverse()
-                    -- Корректируем разворот на 90 градусов, чтобы ключ лежал горизонтально в ладони, а не вертикально
-                    local mirroredRel = MirrorLib.MirrorTransform(rel) * CFrame.Angles(math.rad(90), 0, 0)
-                    s.part.CFrame = s.hand.CFrame * mirroredRel
+                    s.part.CFrame = s.hand.CFrame * MirrorLib.MirrorTransform(rel)
                 end
             elseif s.dst.Parent and s.src.Parent then
                 s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
