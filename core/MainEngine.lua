@@ -1,4 +1,4 @@
--- core/MainEngine.lua (v0.1)
+-- core/MainEngine.lua (Modular Architecture v0.1)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -12,7 +12,7 @@ return function(Import, Config)
     end
     ENV.GardenVisibilityPatch = true
 
-    -- Загружаем PortraitBuilder из папки builders/ репозитория
+    -- Загружаем билдер из builders/
     local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
     if type(BuildPortraitRig) == "function" then
         ENV.BuildPortraitRig = BuildPortraitRig
@@ -25,15 +25,15 @@ return function(Import, Config)
         return (keyStr and Enum.KeyCode[keyStr]) or fallback
     end
 
-    local KEY_SPAWN      = getKey("Spawn", Enum.KeyCode.Z)
-    local KEY_SWITCH     = getKey("SwitchActor", Enum.KeyCode.G)
-    local KEY_STRAIGHT   = getKey("StraightMove", Enum.KeyCode.F)
-    local KEY_PACE       = getKey("PaceToggle", Enum.KeyCode.L)
-    local KEY_CHASE      = getKey("Chase", Enum.KeyCode.N)
-    local KEY_STATUE     = getKey("Statue", Enum.KeyCode.H)
-    local KEY_HEADLOOK   = getKey("HeadLook", Enum.KeyCode.K)
-    local KEY_ROTATE     = getKey("Rotate", Enum.KeyCode.B)
-    local KEY_REMOVE     = getKey("Remove", Enum.KeyCode.V)
+    local KEY_SPAWN    = getKey("Spawn", Enum.KeyCode.Z)
+    local KEY_SWITCH   = getKey("SwitchActor", Enum.KeyCode.G)
+    local KEY_STRAIGHT = getKey("StraightMove", Enum.KeyCode.F)
+    local KEY_PACE     = getKey("PaceToggle", Enum.KeyCode.L)
+    local KEY_CHASE    = getKey("Chase", Enum.KeyCode.N)
+    local KEY_STATUE   = getKey("Statue", Enum.KeyCode.H)
+    local KEY_HEADLOOK = getKey("HeadLook", Enum.KeyCode.K)
+    local KEY_ROTATE   = getKey("Rotate", Enum.KeyCode.B)
+    local KEY_REMOVE   = getKey("Remove", Enum.KeyCode.V)
 
     local ACTOR_MODES = { "PortraitLight", "PortraitDark", "Player" }
     local ACTOR_MODE_LABELS = {
@@ -45,7 +45,7 @@ return function(Import, Config)
     local isSprintPace = false
 
     -- ============================================
-    -- HEADLOOK 360° (Без провала головы в тело)
+    -- HEADLOOK 360° (Встроено в MainEngine)
     -- ============================================
     local currentNeckCFrame = nil
 
@@ -84,16 +84,18 @@ return function(Import, Config)
     end
 
     -- ============================================
-    -- СОСТОЯНИЕ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    -- СОСТОЯНИЕ ЯДРА
     -- ============================================
     local activeClone, cloneCFrame = nil, nil
-    local cloneRunning, cloneChasing, angelMode, headLookEnabled, faceCamera = false, false, false, false, false
+    local headLookEnabled, faceCamera = false, false
     local walkTrack, sprintTrack, idleTrack, toolTrack = nil, nil, nil, nil
     local rootToFeetOffset = 3.55
-    local chaseVelocity = Vector3.zero
 
     local cachedNeckMotor, cachedHeadPart = nil, nil
     local lastFloorCheckPos, cachedFloorY = nil, nil
+
+    local activeMode = nil
+    local activeSubMode = nil
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
@@ -227,10 +229,11 @@ return function(Import, Config)
             chosenAnim.AnimationId = "rbxassetid://507768375"
         end
         toolTrack = animator:LoadAnimation(chosenAnim)
-toolTrack.Looped, toolTrack.Priority = true, Enum.AnimationPriority.Action2
-toolTrack:Play(0.1)
-end
-local function updateLocomotionAnimation(speed, forceSprint)
+        toolTrack.Looped, toolTrack.Priority = true, Enum.AnimationPriority.Action2
+        toolTrack:Play(0.1)
+    end
+
+    local function updateLocomotionAnimation(speed, forceSprint)
 if not walkTrack then return end
 if speed > 0.8 then
 local useSprint = (forceSprint == true) and (sprintTrack ~= nil)
@@ -248,9 +251,29 @@ if walkTrack.IsPlaying then walkTrack:Stop(0.18) end
 if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.18) end
 end
 end
+local function setActiveMode(modeObj, subMode)
+if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
+activeMode.OnDeactivate()
+end
+-- Если нажали ту же самую кнопку и подрежим — выключаем
+if activeMode == modeObj and activeSubMode == subMode then
+if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
+activeMode = nil
+activeSubMode = nil
+print("[MemeActor] Режим движения: ВЫКЛ")
+return
+end
+activeMode = modeObj
+activeSubMode = subMode
+if activeMode and activeMode.OnActivate then
+activeMode.OnActivate(subMode)
+end
+print("[MemeActor] Активный режим:", modeObj.Name, subMode and ("(" .. subMode .. ")") or "")
+end
 local function removeClone()
-cloneRunning, cloneChasing, angelMode = false, false, false
-cloneCFrame, chaseVelocity = nil, Vector3.zero
+if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
+activeMode, activeSubMode = nil, nil
+cloneCFrame = nil
 lastFloorCheckPos, cachedFloorY = nil, nil
 cachedNeckMotor, cachedHeadPart, currentNeckCFrame = nil, nil, nil
 for _, track in ipairs({ walkTrack, sprintTrack, idleTrack, toolTrack }) do
@@ -262,9 +285,8 @@ ENV.ActiveActorClone = nil
 end
 local function spawnCloneAtCamera(customDistance, preserveTransform)
 local savedCFrame = preserveTransform and cloneCFrame or nil
-local wasRunning = preserveTransform and cloneRunning or false
-local wasChasing = preserveTransform and cloneChasing or false
-local wasAngel = preserveTransform and angelMode or false
+local savedMode = preserveTransform and activeMode or nil
+local savedSub = preserveTransform and activeSubMode or nil
 removeClone()
 local spawnDist = customDistance or Config.SpawnDistanceFar
 local currentMode = ACTOR_MODES[currentModeIndex]
@@ -347,9 +369,35 @@ walkTrack.Looped, walkTrack.Priority = true, Enum.AnimationPriority.Action
 end
 playToolAnimation(clone, animator)
 end
-cloneRunning, cloneChasing, angelMode = wasRunning, wasChasing, wasAngel
+if savedMode then
+setActiveMode(savedMode, savedSub)
+end
 print("[MemeActor] Клон создан:", ACTOR_MODE_LABELS[currentMode])
 end
+-- ============================================
+-- API ДЛЯ ВНЕШНИХ РЕЖИМОВ ИЗ ПАПКИ modes/
+-- ============================================
+local ModeAPI = {
+Config = Config,
+GetClone = function() return activeClone end,
+GetCFrame = function() return cloneCFrame end,
+SetCFrame = function(cf)
+cloneCFrame = cf
+if activeClone then
+local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
+if root then root.CFrame = cf end
+end
+end,
+GetFloorY = getFloorY,
+UpdateAnimation = updateLocomotionAnimation,
+GetSubMode = function() return activeSubMode end,
+SetSubMode = function(sub) activeSubMode = sub end,
+}
+-- Загружаем режимы из папки modes/
+local LocomotionFactory = Import("modes/LocomotionMode.lua")
+local StatueFactory     = Import("modes/StatueMode.lua")
+local LocomotionMode = LocomotionFactory and LocomotionFactory(ModeAPI)
+local StatueMode     = StatueFactory and StatueFactory(ModeAPI)
 -- ============================================
 -- УПРАВЛЕНИЕ
 -- ============================================
@@ -369,31 +417,15 @@ if activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, true) end
 elseif key == KEY_PACE then
 isSprintPace = not isSprintPace
 print("[MemeActor] Темп:", isSprintPace and "БЕГ (Sprinting)" or "ХОДЬБА (Forward)")
-elseif key == KEY_STRAIGHT then
+elseif key == KEY_STRAIGHT and LocomotionMode then
 if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceClose, false) end
-cloneRunning = not cloneRunning
-if cloneRunning then
-cloneChasing, angelMode = false, false
-else
-updateLocomotionAnimation(0, false)
-end
-print("[MemeActor] Прямое движение [F]:", cloneRunning and "ВКЛ" or "ВЫКЛ")
-elseif key == KEY_CHASE then
+setActiveMode(LocomotionMode, "Straight")
+elseif key == KEY_CHASE and LocomotionMode then
 if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, false) end
-cloneChasing = not cloneChasing
-if cloneChasing then
-cloneRunning, angelMode, chaseVelocity = false, false, Vector3.zero
-else
-updateLocomotionAnimation(0, false)
-end
-elseif key == KEY_STATUE then
+setActiveMode(LocomotionMode, "Chase")
+elseif key == KEY_STATUE and StatueMode then
 if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, false) end
-angelMode = not angelMode
-if angelMode then
-cloneRunning, cloneChasing = false, false
-else
-updateLocomotionAnimation(0, false)
-end
+setActiveMode(StatueMode, nil)
 elseif key == KEY_HEADLOOK then
 headLookEnabled = not headLookEnabled
 currentNeckCFrame = nil
@@ -401,74 +433,23 @@ print("[MemeActor] HeadLook 360° [K]:", headLookEnabled and "ВКЛ" or "ВЫК
 elseif key == KEY_ROTATE then
 faceCamera = not faceCamera
 if activeClone and cloneCFrame then
-cloneCFrame = cloneCFrame * CFrame.Angles(0, math.pi, 0)
-local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
-if root then root.CFrame = cloneCFrame end
+ModeAPI.SetCFrame(cloneCFrame * CFrame.Angles(0, math.pi, 0))
 end
 elseif key == KEY_REMOVE then
 removeClone()
 end
 end)
 -- ============================================
--- ЦИКЛ ДВИЖЕНИЯ И ВЗГЛЯДА
+-- ЦИКЛ ОБНОВЛЕНИЯ РЕЖИМОВ И HEADLOOK
 -- ============================================
 RunService.RenderStepped:Connect(function(dt)
-if not activeClone or not cloneCFrame then return end
+if not activeClone or not cloneCFrame or not activeMode then return end
 local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
 if not root then return end
 local myRoot = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 local refY = myRoot and myRoot.Position.Y or cloneCFrame.Position.Y
-if angelMode then
-local cam = workspace.CurrentCamera
-local toClone = (cloneCFrame.Position - cam.CFrame.Position)
-if cam.CFrame.LookVector:Dot(toClone.Unit) > 0.45 then
-updateLocomotionAnimation(0, false)
-elseif myRoot then
-local flat = (myRoot.Position - cloneCFrame.Position) * Vector3.new(1, 0, 1)
-if flat.Magnitude > 4 then
-local speed = isSprintPace and Config.SprintSpeed or Config.WalkSpeed
-updateLocomotionAnimation(speed, isSprintPace)
-local nextPos = cloneCFrame.Position + flat.Unit * speed * dt
-local floorY = getFloorY(nextPos, refY, false)
-cloneCFrame = CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.new(myRoot.Position.X, floorY, myRoot.Position.Z))
-root.CFrame = cloneCFrame
-else
-updateLocomotionAnimation(0, false)
-end
-end
-return
-end
-if cloneChasing and myRoot then
-local toPlayer = (myRoot.Position - cloneCFrame.Position) * Vector3.new(1, 0, 1)
-local dist = toPlayer.Magnitude
-local maxSpd = isSprintPace and Config.SprintSpeed or Config.WalkSpeed
-if dist > Config.ChaseStopDistance then
-chaseVelocity = chaseVelocity:Lerp(toPlayer.Unit * maxSpd, math.clamp(dt * (Config.ChaseAcceleration / 10), 0, 1))
-else
-chaseVelocity = chaseVelocity:Lerp(Vector3.zero, math.clamp(dt * Config.ChaseFriction, 0, 1))
-end
-local spd = chaseVelocity.Magnitude
-if spd > 0.3 then
-updateLocomotionAnimation(spd, isSprintPace)
-local nextPos = cloneCFrame.Position + chaseVelocity * dt
-local floorY = getFloorY(nextPos, refY, false)
-cloneCFrame = CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.new(nextPos.X + chaseVelocity.X, floorY, nextPos.Z + chaseVelocity.Z))
-root.CFrame = cloneCFrame
-else
-updateLocomotionAnimation(0, false)
-local lookTarget = Vector3.new(myRoot.Position.X, cloneCFrame.Position.Y, myRoot.Position.Z)
-cloneCFrame = cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 8, 0, 1))
-root.CFrame = cloneCFrame
-end
-return
-end
-if cloneRunning then
-local speed = isSprintPace and Config.SprintSpeed or Config.WalkSpeed
-updateLocomotionAnimation(speed, isSprintPace)
-local nextPos = cloneCFrame.Position + cloneCFrame.LookVector * speed * dt
-local floorY = getFloorY(nextPos, refY, false)
-cloneCFrame = CFrame.new(nextPos.X, floorY, nextPos.Z) * cloneCFrame.Rotation
-root.CFrame = cloneCFrame
+if activeMode.OnStep then
+activeMode.OnStep(dt, cloneCFrame, root, myRoot, refY, isSprintPace)
 end
 end)
 RunService.Stepped:Connect(function(_, dt)
@@ -476,5 +457,5 @@ if not headLookEnabled or not activeClone or not cachedNeckMotor or not cachedHe
 local camPos = workspace.CurrentCamera.CFrame.Position
 solveHeadLook(cachedNeckMotor, cachedHeadPart, camPos, dt)
 end)
-print("[MemeActor v" .. tostring(Config.Version) .. "] Загружено! [Z] Спавн | [G] Облик | [F] Бег вперёд | [L] Темп | [N] Догонялки | [H] Статуя | [K] HeadLook 360° | [V] Удалить")
+print("[MemeActor v" .. tostring(Config.Version) .. "] Модульное ядро загружено! [Z] Спавн | [G] Облик | [F] Бег | [L] Темп | [N] Догонялки | [H] Статуя | [K] HeadLook | [V] Удалить")
 end
