@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.4.1 — Zero-Lag Tool Driver)
+-- core/MainEngine.lua (Pure Modular Core v0.4.2 — SpawnAtPlayer [P])
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -70,7 +70,7 @@ return function(Import, Config)
         cachedNeck.Transform = currentNeckCF
     end
 
-       local function updateToolDrivers()
+    local function updateToolDrivers()
         for _, s in ipairs(cachedToolSyncs) do
             if s.dst.Parent and s.src.Parent then
                 if s.syncOffsets then
@@ -81,9 +81,6 @@ return function(Import, Config)
             end
         end
     end
-
-
-
 
     local function setCrouch(state)
         isCrouching = state
@@ -154,8 +151,12 @@ return function(Import, Config)
         ENV.ActiveActorClone = nil
     end
 
-    local function spawnClone(dist, preserve)
-        local sCF, sMode, sSub, sCrouch = preserve and cloneCF or nil, preserve and activeMode or nil, preserve and activeSub or nil, preserve and isCrouching or false
+    local function spawnClone(dist, preserve, customCF)
+        local sCF = customCF or (preserve and cloneCF or nil)
+        local sMode = preserve and activeMode or nil
+        local sSub = preserve and activeSub or nil
+        local sCrouch = preserve and isCrouching or false
+
         removeClone()
         local modeName = ACTOR_MODES[modeIdx]
         local target = RigLib.GetTargetPlayer(Config.TargetPlayerName)
@@ -195,12 +196,15 @@ return function(Import, Config)
         local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
         rootOffset = (modeName == "Player") and 3.55 or 3.65
 
-        if sCF then cloneCF = sCF
+        if sCF then
+            -- Если передали точную позицию игрока (кнопка [P]), выравниваем по полу
+            local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
+            cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
         else
             local cam = workspace.CurrentCamera
             local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
             flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
-            local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
+local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
 local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
 cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
 end
@@ -209,6 +213,18 @@ tracks = RigLib.SetupAnimations(clone, srcChar)
 setCrouch(sCrouch)
 if sMode then setMode(sMode, sSub) end
 print("[MemeActor] Заспавнен:", ACTOR_LABELS[modeName])
+end
+local function spawnAtPlayer()
+local myChar = LocalPlayer.Character
+local myRoot = myChar and (myChar:FindFirstChild("CollisionPart") or myChar.PrimaryPart or myChar:FindFirstChild("HumanoidRootPart"))
+if not myRoot then return end
+local look = myRoot.CFrame.LookVector * Vector3.new(1, 0, 1)
+if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) else look = look.Unit end
+local exactCF = CFrame.lookAt(myRoot.Position, myRoot.Position + look)
+spawnClone(0, false, exactCF)
+if myChar:GetAttribute("Crouching") == true then
+setCrouch(true)
+end
 end
 local ModeAPI = {
 Config = Config, Import = Import,
@@ -246,6 +262,7 @@ local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
 if gp or UserInputService:GetFocusedTextBox() then return end
 local key = inp.KeyCode
 if key == K.Spawn then spawnClone(Config.SpawnDistanceFar, false)
+elseif key == K.SpawnHere then spawnAtPlayer()
 elseif key == K.SwitchActor then
 local onlyP = UserInputService:IsKeyDown(K.Spawn)
 for _ = 1, #ACTOR_MODES do
@@ -279,7 +296,6 @@ if activeMode and activeMode.OnStep then
 local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
--- Обновляем позицию Handle и в RenderStepped для 0-лагового рендера
 updateToolDrivers()
 end)
 local steppedConn = RunService.Stepped:Connect(function(_, dt)

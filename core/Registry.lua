@@ -16,6 +16,7 @@ Registry.ModeBindings = {
 
 Registry.SystemKeys = {
     Spawn        = { ConfigKey = "Spawn",        Fallback = Enum.KeyCode.Z },
+    SpawnHere    = { ConfigKey = "SpawnHere",    Fallback = Enum.KeyCode.P },
     SwitchActor  = { ConfigKey = "SwitchActor",  Fallback = Enum.KeyCode.G },
     PaceToggle   = { ConfigKey = "PaceToggle",   Fallback = Enum.KeyCode.L },
     Crouch       = { ConfigKey = "CrouchToggle", Fallback = Enum.KeyCode.T },
@@ -28,9 +29,10 @@ Registry.SystemKeys = {
 function Registry.PrintStartupBanner(Config)
     local keys = Config.Keys or {}
     print(string.format(
-        "[MemeActor v%s] Загружено! [%s] Спавн | [%s] Облик | [%s] Присед | [%s] Бег | [%s] Темп | [%s] Догонялки | [%s] Статуя | [%s] Зеркало | [%s] Дрожь | [%s] HeadLook | [%s] Удалить",
+        "[MemeActor v%s] Загружено! [%s] Спавн | [%s] Спавн в себе | [%s] Облик | [%s] Присед | [%s] Бег | [%s] Темп | [%s] Догонялки | [%s] Статуя | [%s] Зеркало | [%s] Дрожь | [%s] HeadLook | [%s] Удалить",
         tostring(Config.Version),
         keys.Spawn or "Z",
+        keys.SpawnHere or "P",
         keys.SwitchActor or "G",
         keys.CrouchToggle or "T",
         keys.StraightMove or "F",

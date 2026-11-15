@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.3"
+local VERSION = "0.4"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -18,17 +18,18 @@ local DEFAULT_CONFIG = {
     ChaseAcceleration = 34,
     ChaseFriction = 7.5,
     MaxStepHeight = 2.5,
-    JitterIntensity = 4.0, -- Сила дрожания статуи [Y]
+    JitterIntensity = 4.0,
     Keys = {
         Spawn = "Z",
+        SpawnHere = "P",    -- Спавн точно на месте игрока с его поворотом
         SwitchActor = "G",
         StraightMove = "F",
         PaceToggle = "L",
         CrouchToggle = "T",
         Chase = "N",
         Statue = "H",
-        Mirror = "R",       -- Режим Зеркала на базе библиотек
-        JitterToggle = "Y", -- Эффект дрожания статуи (ActionJitter)
+        Mirror = "R",
+        JitterToggle = "Y",
         HeadLook = "K",
         Rotate = "B",
         Remove = "V",
