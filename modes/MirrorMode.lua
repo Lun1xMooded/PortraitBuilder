@@ -149,7 +149,7 @@ return function(API)
             local clone = API.GetClone()
             if not clone then return end
 
-            -- 1. Возвращены наклоны и встречный поворот корпуса при движении влево/вправо!
+            -- 1. Наклоны и встречный поворот корпуса при движении влево/вправо
             if math.abs(smoothStrafeX) > 0.01 then
                 local rootMotor = clone:FindFirstChild("Root", true)
                 local waistMotor = clone:FindFirstChild("Waist", true)
@@ -161,7 +161,7 @@ return function(API)
                 end
             end
 
-            -- 2. Зеркалим правую руку игрока в левую руку клона на Heartbeat (после Animator)
+            -- 2. Зеркалим правую руку игрока в левую руку клона
             if lastToolName ~= "" then
                 for _, pair in ipairs(armMirrorPairs) do
                     if pair.dst.Parent and pair.src.Parent then
@@ -170,14 +170,14 @@ return function(API)
                 end
             end
 
-            -- 3. Дебаг-принт раз в 2 секунды, чтобы видеть реальные углы руки игрока и клона
+            -- 3. Дебаг-принт раз в 2 секунды
             if os.clock() - lastDebugTick >= 2 then
                 lastDebugTick = os.clock()
                 local pInfo = "нет пар"
-                if #armMirrorPairs > 0 then
-                    local sh = armMirrorPairs[1]
-                    local rx, ry, rz = sh.src.Transform:ToEulerAnglesXYZ()
-                    pInfo = string.format("%s src=(%.1f, %.1f, %.1f)", sh.name, math.deg(rx), math.deg(ry), math.deg(rz))
+                local firstPair = armMirrorPairs[1]
+                if firstPair then
+                    local rx, ry, rz = firstPair.src.Transform:ToEulerAnglesXYZ()
+                    pInfo = string.format("%s src=(%.1f, %.1f, %.1f)", firstPair.name, math.deg(rx), math.deg(ry), math.deg(rz))
                 end
                 print(string.format("[MirrorDebug] Tool='%s' | Pairs=%d | %s | Strafe=%.2f", lastToolName, #armMirrorPairs, pInfo, smoothStrafeX))
             end

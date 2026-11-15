@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.7 — Heartbeat Post-Animator + Debug Support)
+-- core/MainEngine.lua (Pure Modular Core v0.3.8 — Clean Reload + Heartbeat)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -6,7 +6,10 @@ return function(Import, Config)
     local LocalPlayer = Players.LocalPlayer
     local ENV = getgenv()
 
-    if ENV.GardenVisibilityPatch then warn("[MemeActor] Уже запущено!") return end
+    -- Останавливаем предыдущую запущенную версию, чтобы при перезапуске не было конфликтов
+    if ENV.StopMemeActor then
+        pcall(ENV.StopMemeActor)
+    end
     ENV.GardenVisibilityPatch = true
 
     local Registry   = Import("core/Registry.lua")
@@ -14,7 +17,8 @@ return function(Import, Config)
     local EffectsLib = Import("libs/EffectsLib.lua")
     local RigLib     = Import("libs/RigLib.lua")
     if not Registry or not MirrorLib or not EffectsLib or not RigLib then
-        warn("[MemeActor] Не удалось загрузить библиотеки!") return
+        warn("[MemeActor] Не удалось загрузить библиотеки!")
+        return
     end
 
     local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
@@ -193,8 +197,8 @@ return function(Import, Config)
         Config = Config, Import = Import,
         GetClone = function() return activeClone end,
         GetCFrame = function() return cloneCF end,
-        SetCFrame = function(cf)
-            cloneCF = cf
+SetCFrame = function(cf)
+cloneCF = cf
 local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
 if r then r.CFrame = cf end
 end,
@@ -220,7 +224,7 @@ local Binds = {}
 for _, b in ipairs(Registry.ModeBindings) do
 table.insert(Binds, { Key = resolveKey(b), Id = b.ModuleId, Sub = b.SubMode, Spawn = b.AutoSpawn })
 end
-UserInputService.InputBegan:Connect(function(inp, gp)
+local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
 if gp or UserInputService:GetFocusedTextBox() then return end
 local key = inp.KeyCode
 if key == K.Spawn then spawnClone(Config.SpawnDistanceFar, false)
@@ -248,7 +252,7 @@ end
 end
 end
 end)
-RunService.RenderStepped:Connect(function(dt)
+local renderConn = RunService.RenderStepped:Connect(function(dt)
 if not activeClone or not cloneCF then return end
 local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
 if not r then return end
@@ -258,8 +262,7 @@ local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
 end)
--- Heartbeat выполняется ПОСЛЕ внутреннего шага Animator: здесь наклоны, рука и HeadLook не сбрасываются анимацией Idle!
-RunService.Heartbeat:Connect(function(dt)
+local hbConn = RunService.Heartbeat:Connect(function(dt)
 if not activeClone then return end
 if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 for _, s in ipairs(cachedToolSyncs) do
@@ -269,5 +272,12 @@ end
 end
 if headLookOn then solveHeadLook(dt) end
 end)
+ENV.StopMemeActor = function()
+ENV.GardenVisibilityPatch = nil
+removeClone()
+if inputConn then inputConn:Disconnect() end
+if renderConn then renderConn:Disconnect() end
+if hbConn then hbConn:Disconnect() end
+end
 Registry.PrintStartupBanner(Config)
 end
