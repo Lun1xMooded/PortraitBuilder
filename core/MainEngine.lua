@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.1)
+-- core/MainEngine.lua (Pure Modular Core v0.3.3)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -84,19 +84,19 @@ return function(Import, Config)
             if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.1) end
             if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.1) end
             if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
-            tracks.crouch:AdjustSpeed((speed > 0.5) and math.clamp(speed / 15, 0.3, 1.2) or 0)
+            tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 12, 0.45, 1.3) or 0)
             return
         end
         if not tracks.walk then return end
-        if speed > 0.8 then
+        if speed > 0.6 then
             if sprint and tracks.sprint then
                 if tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
                 if not tracks.sprint.IsPlaying then tracks.sprint:Play(0.15, 1, 1) end
-                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.75, 1.4))
+                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.7, 1.4))
             else
                 if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
                 if not tracks.walk.IsPlaying then tracks.walk:Play(0.15, 1, 1) end
-                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.65, 1.35))
+                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.6, 1.35))
             end
         else
             if tracks.walk.IsPlaying then tracks.walk:Stop(0.18) end
@@ -195,7 +195,10 @@ GetFloorY = getFloorY, UpdateAnimation = updateAnim,
 GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub = s end,
 IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
 IsHeadLookEnabled = function() return headLookOn end,
-AttachTool = function(mirrored) RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs) end,
+AttachTool = function(mirrored)
+RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs)
+RigLib.PlayToolTrack(activeClone, tracks)
+end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
 }
@@ -225,7 +228,7 @@ if activeClone then spawnClone(Config.SpawnDistanceFar, true) end
 elseif key == K.PaceToggle then isSprint = not isSprint; print("[MemeActor] Темп:", isSprint and "БЕГ" or "ХОДЬБА")
 elseif key == K.Crouch then if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(not isCrouching)
 elseif key == K.JitterToggle then jitterOn = not jitterOn; if not jitterOn then EffectsLib.ResetJitter(cachedJitter) end
-elseif key == K.HeadLook then headLookOn = not headLookOn; currentNeckCF = nil
+elseif key == K.HeadLook then headLookOn = not headLookOn; currentNeckCF = nil; print("[MemeActor] HeadLook 360°:", headLookOn and "ВКЛ" or "ВЫКЛ")
 elseif key == K.Rotate then faceCam = not faceCam; if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
 elseif key == K.Remove then removeClone()
 else

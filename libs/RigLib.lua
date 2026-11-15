@@ -1,6 +1,4 @@
 -- libs/RigLib.lua
--- Сборка клонов, перенос предметов (Tool) и загрузка анимаций DOORS
-
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
@@ -21,7 +19,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     table.clear(cachedToolSyncs)
     if not clone then return end
 
-    local sourceChar = (isMirrored and LocalPlayer.Character) or LocalPlayer.Character
+    local sourceChar = LocalPlayer.Character
     for _, oldTool in ipairs(clone:GetChildren()) do
         if oldTool:IsA("Tool") then oldTool:Destroy() end
     end
@@ -35,9 +33,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local sourceTool = sourceChar:FindFirstChildOfClass("Tool")
     if not sourceTool then return end
 
-    local targetHand = isMirrored
-        and (clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm"))
-        or (clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm"))
+    local targetHand = clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm")
     if not targetHand then return end
 
     local sourceHand = sourceChar:FindFirstChild("RightHand") or sourceChar:FindFirstChild("Right Arm")
@@ -76,7 +72,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             end
         elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0
         elseif d:IsA("Motor6D") and srcToolMotors[d.Name] then
-            table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = isMirrored })
+            table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = false })
         end
     end
     clonedTool.Parent = clone
@@ -93,21 +89,53 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
 
     local newJoint = Instance.new("Motor6D")
     if origJoint then
-        newJoint.Name = isMirrored and "LeftGrip" or origJoint.Name
+        newJoint.Name = origJoint.Name
         if origJoint.Part0 == sourceHand then newJoint.Part0, newJoint.Part1 = targetHand, targetPart
         else newJoint.Part0, newJoint.Part1 = targetPart, targetHand end
-        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(origJoint.C0) or origJoint.C0
-        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(origJoint.C1) or origJoint.C1
+        newJoint.C0, newJoint.C1 = origJoint.C0, origJoint.C1
         if origJoint:IsA("Motor6D") then
-            table.insert(cachedToolSyncs, { dst = newJoint, src = origJoint, mirror = isMirrored })
+            table.insert(cachedToolSyncs, { dst = newJoint, src = origJoint, mirror = false })
         end
     else
-        newJoint.Name, newJoint.Part0, newJoint.Part1 = (isMirrored and "LeftGrip" or "RightGrip"), targetHand, targetPart
-        local baseC0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(baseC0) or baseC0
-        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(clonedTool.Grip) or clonedTool.Grip
+        newJoint.Name, newJoint.Part0, newJoint.Part1 = "RightGrip", targetHand, targetPart
+        newJoint.C0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+        newJoint.C1 = clonedTool.Grip
     end
     newJoint.Parent = targetHand
+end
+
+function RigLib.PlayToolTrack(clone, tracks)
+    if tracks.tool then
+        pcall(function() tracks.tool:Stop(0.1) end)
+        tracks.tool = nil
+    end
+
+    local humanoid = clone and clone:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    local tool = clone and clone:FindFirstChildOfClass("Tool")
+    if not animator or not tool then return end
+
+    local chosen = nil
+    for _, d in ipairs(tool:GetDescendants()) do
+        if d:IsA("Animation") and d.AnimationId ~= "" then
+            local n = d.Name:lower()
+            if (n:find("idle") or n:find("hold")) and not n:find("equip") then
+                chosen = d
+                break
+            end
+        end
+    end
+    if not chosen then
+        chosen = Instance.new("Animation")
+        chosen.AnimationId = "rbxassetid://507768375"
+    end
+
+    local tr = animator:LoadAnimation(chosen)
+    tr.Looped = true
+    -- Action4 перекрывает Idle/Forward/Crouch и заставляет руку подняться вместе с предметом
+    tr.Priority = Enum.AnimationPriority.Action4
+    tr:Play(0.1)
+    tracks.tool = tr
 end
 
 function RigLib.SetupAnimations(clone, sourceChar)
@@ -115,7 +143,6 @@ function RigLib.SetupAnimations(clone, sourceChar)
     local humanoid = clone:FindFirstChildOfClass("Humanoid")
     if not humanoid then return tracks end
 
-    humanoid.EvaluateStateMachine = false
     humanoid.PlatformStand = false
     local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
 
@@ -133,37 +160,20 @@ function RigLib.SetupAnimations(clone, sourceChar)
             return nil
         end
         tracks.idle   = load("Idle", Enum.AnimationPriority.Idle, true)
-        tracks.walk   = load("Forward", Enum.AnimationPriority.Action, true)
-        tracks.sprint = load("Sprinting", Enum.AnimationPriority.Action, true)
-        tracks.crouch = load("Crouch", Enum.AnimationPriority.Action2, true)
+        tracks.walk   = load("Forward", Enum.AnimationPriority.Movement, true)
+        tracks.sprint = load("Sprinting", Enum.AnimationPriority.Movement, true)
+        tracks.crouch = load("Crouch", Enum.AnimationPriority.Action, true)
     end
 
     if not tracks.walk then
         local fb = Instance.new("Animation")
         fb.AnimationId = "rbxassetid://913376220"
         tracks.walk = animator:LoadAnimation(fb)
-        tracks.walk.Looped, tracks.walk.Priority = true, Enum.AnimationPriority.Action
+        tracks.walk.Looped, tracks.walk.Priority = true, Enum.AnimationPriority.Movement
     end
 
     if tracks.idle then tracks.idle:Play(0.1) end
-
-    local tool = clone:FindFirstChildOfClass("Tool")
-    if tool then
-        local chosen = nil
-        for _, d in ipairs(tool:GetDescendants()) do
-            if d:IsA("Animation") and d.AnimationId ~= "" then
-                local n = d.Name:lower()
-                if (n:find("idle") or n:find("hold")) and not n:find("equip") then chosen = d break end
-            end
-        end
-        if not chosen then
-            chosen = Instance.new("Animation")
-            chosen.AnimationId = "rbxassetid://507768375"
-        end
-        tracks.tool = animator:LoadAnimation(chosen)
-        tracks.tool.Looped, tracks.tool.Priority = true, Enum.AnimationPriority.Action2
-        tracks.tool:Play(0.1)
-    end
+    RigLib.PlayToolTrack(clone, tracks)
 
     return tracks
 end
