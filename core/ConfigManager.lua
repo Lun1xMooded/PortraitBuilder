@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.2"
+local VERSION = "0.3"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -11,21 +11,24 @@ local DEFAULT_CONFIG = {
     TargetPlayerName = "",
     SpawnDistanceFar = 15,
     SpawnDistanceClose = 10,
-    CrouchSpeed = 10, -- Скорость в приседе из Movement DOORS
+    CrouchSpeed = 10,
     WalkSpeed = 14,
     SprintSpeed = 21,
     ChaseStopDistance = 10,
     ChaseAcceleration = 34,
     ChaseFriction = 7.5,
     MaxStepHeight = 2.5,
+    JitterIntensity = 4.0, -- Сила дрожания статуи [Y]
     Keys = {
         Spawn = "Z",
         SwitchActor = "G",
         StraightMove = "F",
         PaceToggle = "L",
-        CrouchToggle = "T", -- Безопасная клавиша для приседания клона
+        CrouchToggle = "T",
         Chase = "N",
         Statue = "H",
+        Mirror = "R",       -- Режим Зеркала на базе библиотек
+        JitterToggle = "Y", -- Эффект дрожания статуи (ActionJitter)
         HeadLook = "K",
         Rotate = "B",
         Remove = "V",
@@ -37,9 +40,7 @@ function ConfigManager.Load()
         return DEFAULT_CONFIG
     end
 
-    if not isfolder(FOLDER_NAME) then
-        makefolder(FOLDER_NAME)
-    end
+    if not isfolder(FOLDER_NAME) then makefolder(FOLDER_NAME) end
 
     if not isfile(FILE_PATH) then
         writefile(FILE_PATH, HttpService:JSONEncode(DEFAULT_CONFIG))
@@ -47,17 +48,10 @@ function ConfigManager.Load()
         return DEFAULT_CONFIG
     end
 
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(readfile(FILE_PATH))
-    end)
-
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(FILE_PATH)) end)
     if ok and type(decoded) == "table" and decoded.Version == VERSION then
-        for k, v in pairs(DEFAULT_CONFIG) do
-            if decoded[k] == nil then decoded[k] = v end
-        end
-        for k, v in pairs(DEFAULT_CONFIG.Keys) do
-            if decoded.Keys[k] == nil then decoded.Keys[k] = v end
-        end
+        for k, v in pairs(DEFAULT_CONFIG) do if decoded[k] == nil then decoded[k] = v end end
+        for k, v in pairs(DEFAULT_CONFIG.Keys) do if decoded.Keys[k] == nil then decoded.Keys[k] = v end end
         return decoded
     else
         writefile(FILE_PATH, HttpService:JSONEncode(DEFAULT_CONFIG))

@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Modular Architecture v0.2 + Crouch [T])
+-- core/MainEngine.lua (Pure Modular Core v0.3)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -6,486 +6,254 @@ return function(Import, Config)
     local LocalPlayer = Players.LocalPlayer
     local ENV = getgenv()
 
-    if ENV.GardenVisibilityPatch then
-        warn("[MemeActor] Скрипт уже запущен!")
-        return
-    end
+    if ENV.GardenVisibilityPatch then warn("[MemeActor] Уже запущено!") return end
     ENV.GardenVisibilityPatch = true
 
+    local Registry   = Import("core/Registry.lua")
+    local MirrorLib  = Import("libs/MirrorLib.lua")
+    local EffectsLib = Import("libs/EffectsLib.lua")
+    local RigLib     = Import("libs/RigLib.lua")
+    if not Registry or not MirrorLib or not EffectsLib or not RigLib then
+        warn("[MemeActor] Не удалось загрузить библиотеки!") return
+    end
+
     local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
-    if type(BuildPortraitRig) == "function" then
-        ENV.BuildPortraitRig = BuildPortraitRig
-    end
+    if type(BuildPortraitRig) == "function" then ENV.BuildPortraitRig = BuildPortraitRig end
 
-    local function getKey(name, fallback)
-        local keyStr = Config.Keys and Config.Keys[name]
-        return (keyStr and Enum.KeyCode[keyStr]) or fallback
+    local function resolveKey(info)
+        local k = Config.Keys and Config.Keys[info.ConfigKey]
+        return (k and Enum.KeyCode[k]) or info.Fallback
     end
-
-    local KEY_SPAWN    = getKey("Spawn", Enum.KeyCode.Z)
-    local KEY_SWITCH   = getKey("SwitchActor", Enum.KeyCode.G)
-    local KEY_STRAIGHT = getKey("StraightMove", Enum.KeyCode.F)
-    local KEY_PACE     = getKey("PaceToggle", Enum.KeyCode.L)
-    local KEY_CROUCH   = getKey("CrouchToggle", Enum.KeyCode.T)
-    local KEY_CHASE    = getKey("Chase", Enum.KeyCode.N)
-    local KEY_STATUE   = getKey("Statue", Enum.KeyCode.H)
-    local KEY_HEADLOOK = getKey("HeadLook", Enum.KeyCode.K)
-    local KEY_ROTATE   = getKey("Rotate", Enum.KeyCode.B)
-    local KEY_REMOVE   = getKey("Remove", Enum.KeyCode.V)
 
     local ACTOR_MODES = { "PortraitLight", "PortraitDark", "Player" }
-    local ACTOR_MODE_LABELS = {
-        PortraitLight = "Portrait Light (Белый - Сток)",
-        PortraitDark  = "Portrait Dark (Чёрный)",
-        Player        = "Клон друга"
-    }
-    local currentModeIndex = 1
-    local isSprintPace = false
-    local isCrouching = false
+    local ACTOR_LABELS = { PortraitLight = "Portrait Белый", PortraitDark = "Portrait Чёрный", Player = "Клон друга" }
+    local modeIdx, isSprint, isCrouching, jitterOn, headLookOn, faceCam = 1, false, false, false, false, false
 
-    -- ============================================
-    -- HEADLOOK 360°
-    -- ============================================
-    local currentNeckCFrame = nil
-
-    local function solveHeadLook(neckMotor, headPart, targetPos, dt)
-        if not neckMotor or not neckMotor.Parent or not headPart or not headPart.Parent then return end
-        local part0 = neckMotor.Part0
-        if not part0 then return end
-
-        local baseWorld = part0.CFrame * neckMotor.C0
-        local headCenterPos = (baseWorld * neckMotor.C1:Inverse()).Position
-        local toTarget = targetPos - headCenterPos
-        if toTarget.Magnitude < 0.05 then return end
-
-        local lookDir = toTarget.Unit
-        local upVec = baseWorld.UpVector
-        if math.abs(lookDir:Dot(upVec)) > 0.995 then
-            upVec = baseWorld.RightVector
-        end
-
-        local desiredWorld = CFrame.lookAt(Vector3.zero, lookDir, upVec)
-        local localRot = baseWorld.Rotation:ToObjectSpace(desiredWorld)
-        local rx, ry, rz = localRot:ToEulerAnglesYXZ()
-
-        rx = math.clamp(rx, math.rad(-65), math.rad(65))
-        rz = math.clamp(rz, math.rad(-25), math.rad(25))
-
-        local cleanRot = CFrame.fromEulerAnglesYXZ(rx, ry, rz)
-        local targetTransform = neckMotor.C1 * cleanRot * neckMotor.C1:Inverse()
-
-        if not currentNeckCFrame then
-            currentNeckCFrame = targetTransform
-        else
-            currentNeckCFrame = currentNeckCFrame:Lerp(targetTransform, math.clamp((dt or 0.016) * 14, 0, 1))
-        end
-        neckMotor.Transform = currentNeckCFrame
-    end
-
-    -- ============================================
-    -- СОСТОЯНИЕ ЯДРА
-    -- ============================================
-    local activeClone, cloneCFrame = nil, nil
-    local headLookEnabled, faceCamera = false, false
-    local walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack = nil, nil, nil, nil, nil
-    local rootToFeetOffset = 3.55
-
-    local cachedNeckMotor, cachedHeadPart = nil, nil
-    local lastFloorCheckPos, cachedFloorY = nil, nil
-    local activeMode, activeSubMode = nil, nil
+    local activeClone, cloneCF, activeMode, activeSub = nil, nil, nil, nil
+    local tracks = {}
+    local cachedNeck, cachedHead, currentNeckCF = nil, nil, nil
+    local cachedJitter, cachedToolSyncs = {}, {}
+    local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
 
-    local function getTargetPlayer()
-        if Config.TargetPlayerName ~= "" and Config.TargetPlayerName ~= LocalPlayer.Name then
-            local p = Players:FindFirstChild(Config.TargetPlayerName)
-            if p and p.Character then return p end
-        end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then return p end
-        end
-        return LocalPlayer
-    end
-
-    local function getFloorY(pos, refY, forceUpdate)
+    local function getFloorY(pos, refY, force)
         if not activeClone then return pos.Y end
-        if not forceUpdate and lastFloorCheckPos and cachedFloorY then
-            if (Vector3.new(pos.X, 0, pos.Z) - lastFloorCheckPos).Magnitude < 0.25 then
-                return cachedFloorY
-            end
+        if not force and lastFloorPos and cachedFloorY and (Vector3.new(pos.X, 0, pos.Z) - lastFloorPos).Magnitude < 0.25 then
+            return cachedFloorY
         end
-
-        local ignoreList = { activeClone }
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character then table.insert(ignoreList, p.Character) end
-        end
-        rayParams.FilterDescendantsInstances = ignoreList
-
-        local startY = (refY or pos.Y) + 2.0
-        local result = workspace:Raycast(Vector3.new(pos.X, startY, pos.Z), Vector3.new(0, -30, 0), rayParams)
-        local finalY = refY or pos.Y
-        if result then
-            finalY = result.Position.Y + rootToFeetOffset
-        end
-
-        lastFloorCheckPos = Vector3.new(pos.X, 0, pos.Z)
-        cachedFloorY = finalY
-        return finalY
+        local ignore = { activeClone }
+        for _, p in ipairs(Players:GetPlayers()) do if p.Character then table.insert(ignore, p.Character) end end
+        rayParams.FilterDescendantsInstances = ignore
+        local hit = workspace:Raycast(Vector3.new(pos.X, (refY or pos.Y) + 2, pos.Z), Vector3.new(0, -30, 0), rayParams)
+        local fy = hit and (hit.Position.Y + rootOffset) or (refY or pos.Y)
+        lastFloorPos, cachedFloorY = Vector3.new(pos.X, 0, pos.Z), fy
+        return fy
     end
 
-    local function attachToolToRig(model, sourceChar)
-        for _, oldTool in ipairs(model:GetChildren()) do
-            if oldTool:IsA("Tool") then oldTool:Destroy() end
+    local function solveHeadLook(dt)
+        if not cachedNeck or not cachedNeck.Parent or not cachedHead or not cachedHead.Parent or not cachedNeck.Part0 then return end
+        local baseW = cachedNeck.Part0.CFrame * cachedNeck.C0
+        local headPos = (baseW * cachedNeck.C1:Inverse()).Position
+        local toTarget = workspace.CurrentCamera.CFrame.Position - headPos
+        if toTarget.Magnitude < 0.05 then return end
+        local dir, up = toTarget.Unit, baseW.UpVector
+        if math.abs(dir:Dot(up)) > 0.995 then up = baseW.RightVector end
+        local rx, ry, rz = baseW.Rotation:ToObjectSpace(CFrame.lookAt(Vector3.zero, dir, up)):ToEulerAnglesYXZ()
+        rx, rz = math.clamp(rx, math.rad(-65), math.rad(65)), math.clamp(rz, math.rad(-25), math.rad(25))
+        local targetTr = cachedNeck.C1 * CFrame.fromEulerAnglesYXZ(rx, ry, rz) * cachedNeck.C1:Inverse()
+        currentNeckCF = currentNeckCF and currentNeckCF:Lerp(targetTr, math.clamp((dt or 0.016) * 14, 0, 1)) or targetTr
+        cachedNeck.Transform = currentNeckCF
+    end
+
+    local function setCrouch(state)
+        isCrouching = state
+        if not tracks.crouch then return end
+        if isCrouching then
+            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
+            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
+            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
+        elseif tracks.crouch.IsPlaying then
+            tracks.crouch:Stop(0.2)
         end
-        for _, desc in ipairs(model:GetDescendants()) do
-            if desc:IsA("Motor6D") and desc.Name == "RightGrip" then desc:Destroy() end
+    end
+
+    local function updateAnim(speed, sprint)
+        if isCrouching and tracks.crouch then
+            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.1) end
+            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.1) end
+            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
+            tracks.crouch:AdjustSpeed((speed > 0.5) and math.clamp(speed / 15, 0.3, 1.2) or 0)
+            return
         end
-
-        if not sourceChar then return end
-        local sourceTool = sourceChar:FindFirstChildOfClass("Tool")
-        if not sourceTool then return end
-
-        local targetHand = model:FindFirstChild("RightHand") or model:FindFirstChild("Right Arm")
-        if not targetHand then return end
-
-        local sourceHand = sourceChar:FindFirstChild("RightHand") or sourceChar:FindFirstChild("Right Arm")
-        local origJoint, origPart1Name = nil, nil
-        if sourceHand then
-            for _, desc in ipairs(sourceChar:GetDescendants()) do
-                if (desc:IsA("Motor6D") or desc:IsA("Weld")) then
-                    if desc.Part0 == sourceHand and desc.Part1 and desc.Part1:IsDescendantOf(sourceTool) then
-                        origJoint, origPart1Name = desc, desc.Part1.Name break
-                    elseif desc.Part1 == sourceHand and desc.Part0 and desc.Part0:IsDescendantOf(sourceTool) then
-                        origJoint, origPart1Name = desc, desc.Part0.Name break
-                    end
-                end
+        if not tracks.walk then return end
+        if speed > 0.8 then
+            if sprint and tracks.sprint then
+                if tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
+                if not tracks.sprint.IsPlaying then tracks.sprint:Play(0.15, 1, 1) end
+                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.75, 1.4))
+            else
+                if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
+                if not tracks.walk.IsPlaying then tracks.walk:Play(0.15, 1, 1) end
+                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.65, 1.35))
             end
-        end
-
-        sourceTool.Archivable = true
-        local clonedTool = sourceTool:Clone()
-        sourceTool.Archivable = false
-        if not clonedTool then return end
-
-        for _, d in ipairs(clonedTool:GetDescendants()) do
-            if d:IsA("LocalScript") or d:IsA("Script") then d:Destroy()
-            elseif d:IsA("BasePart") then
-                d.CanCollide, d.CanTouch, d.CanQuery, d.Massless, d.Anchored, d.LocalTransparencyModifier = false, false, false, true, false, 0
-            elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0 end
-        end
-        clonedTool.Parent = model
-
-        local targetPart = (origPart1Name and clonedTool:FindFirstChild(origPart1Name, true))
-            or clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
-        if not targetPart then return end
-
-        for _, j in ipairs(targetPart:GetChildren()) do
-            if (j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("WeldConstraint")) then
-                if not j.Part0 or not j.Part0:IsDescendantOf(clonedTool) or not j.Part1 or not j.Part1:IsDescendantOf(clonedTool) then j:Destroy() end
-            end
-        end
-
-        local newJoint = Instance.new("Motor6D")
-        if origJoint then
-            newJoint.Name = origJoint.Name
-            if origJoint.Part0 == sourceHand then newJoint.Part0, newJoint.Part1 = targetHand, targetPart
-            else newJoint.Part0, newJoint.Part1 = targetPart, targetHand end
-            newJoint.C0, newJoint.C1 = origJoint.C0, origJoint.C1
         else
-            newJoint.Name, newJoint.Part0, newJoint.Part1 = "RightGrip", targetHand, targetPart
-            newJoint.C0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-            newJoint.C1 = clonedTool.Grip
+            if tracks.walk.IsPlaying then tracks.walk:Stop(0.18) end
+            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.18) end
         end
-        newJoint.Parent = targetHand
     end
 
-    local function cacheHeadRigParts(clone)
-        cachedHeadPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
-        cachedNeckMotor, currentNeckCFrame = nil, nil
-        for _, desc in ipairs(clone:GetDescendants()) do
-            if desc:IsA("Motor6D") and desc.Name == "Neck" then
-                cachedNeckMotor = desc
-                break
+    local function setMode(modeObj, sub)
+        if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then activeMode.OnDeactivate() end
+        if activeMode == modeObj and activeSub == sub then
+            if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
+            activeMode, activeSub = nil, nil
+            print("[MemeActor] Режим: ВЫКЛ")
+            return
+        end
+        activeMode, activeSub = modeObj, sub
+        if activeMode and activeMode.OnActivate then activeMode.OnActivate(sub) end
+        print("[MemeActor] Режим:", modeObj.Name, sub or "")
+    end
+
+    local function removeClone()
+        if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
+        activeMode, activeSub, cloneCF, lastFloorPos, cachedFloorY = nil, nil, nil, nil, nil
+        cachedNeck, cachedHead, currentNeckCF = nil, nil, nil
+        table.clear(cachedJitter)
+        table.clear(cachedToolSyncs)
+        for _, t in pairs(tracks) do pcall(function() t:Stop() end) end
+        tracks = {}
+        if activeClone then activeClone:Destroy() activeClone = nil end
+        ENV.ActiveActorClone = nil
+    end
+
+    local function spawnClone(dist, preserve)
+        local sCF, sMode, sSub, sCrouch = preserve and cloneCF or nil, preserve and activeMode or nil, preserve and activeSub or nil, preserve and isCrouching or false
+        removeClone()
+        local modeName = ACTOR_MODES[modeIdx]
+        local target = RigLib.GetTargetPlayer(Config.TargetPlayerName)
+        local srcChar = (target and target.Character) or LocalPlayer.Character
+
+        local clone = nil
+        if modeName == "Player" then
+            if not srcChar then return end
+            srcChar.Archivable = true; clone = srcChar:Clone(); srcChar.Archivable = false
+            if not clone then return end
+            clone.Name = (target and target.Name or LocalPlayer.Name) .. "_MemeClone"
+            for _, d in ipairs(clone:GetDescendants()) do
+                if d:IsA("LocalScript") or d:IsA("Script") or d:IsA("Animator") then d:Destroy()
+                elseif d:IsA("BasePart") then
+                    d.CanCollide, d.Massless = false, true
+                    d.Anchored = (d.Name == "HumanoidRootPart" or d.Name == "CollisionPart")
+                    d.LocalTransparencyModifier = 0
+                elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0 end
             end
+        else
+            if not BuildPortraitRig then return end
+            clone = BuildPortraitRig(modeName)
         end
+
+        clone.Parent = workspace
+        activeClone, ENV.ActiveActorClone = clone, clone
+        cachedHead = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
+        for _, d in ipairs(clone:GetDescendants()) do if d:IsA("Motor6D") and d.Name == "Neck" then cachedNeck = d break end end
+        cachedJitter = EffectsLib.CacheJitterParts(clone)
+        RigLib.AttachTool(clone, false, modeName ~= "Player", MirrorLib, cachedToolSyncs)
+
+        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+        rootOffset = (modeName == "Player") and 3.55 or 3.65
+
+        if sCF then cloneCF = sCF
+        else
+            local cam = workspace.CurrentCamera
+            local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
+            flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
+            local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
+            local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
+            cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
+        end
+        if root then root.CFrame = cloneCF end
+
+        tracks = RigLib.SetupAnimations(clone, srcChar)
+        setCrouch(sCrouch)
+        if sMode then setMode(sMode, sSub) end
+        print("[MemeActor] Заспавнен:", ACTOR_LABELS[modeName])
     end
 
-    local function playToolAnimation(clone, animator)
-        local tool = clone:FindFirstChildOfClass("Tool")
-        if not tool then return end
-        local chosenAnim = nil
-        for _, desc in ipairs(tool:GetDescendants()) do
-            if desc:IsA("Animation") and desc.AnimationId ~= "" then
-                local n = desc.Name:lower()
-                if (n:find("idle") or n:find("hold")) and not n:find("equip") then chosenAnim = desc break end
-            end
-        end
-        if not chosenAnim then
-            chosenAnim = Instance.new("Animation")
-            chosenAnim.AnimationId = "rbxassetid://507768375"
-        end
-        toolTrack = animator:LoadAnimation(chosenAnim)
-        toolTrack.Looped, toolTrack.Priority = true, Enum.AnimationPriority.Action2
-        toolTrack:Play(0.1)
-    end
-
--- Управление приседанием (по логике Movement DOORS: Crouch.Play(0.2, 1, speed/15))
-local function setCrouchState(state)
-isCrouching = state
-if not crouchTrack then return end
-if isCrouching then
-if walkTrack and walkTrack.IsPlaying then walkTrack:Stop(0.15) end
-if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.15) end
-if not crouchTrack.IsPlaying then
-crouchTrack:Play(0.2, 1, 0)
-end
-else
-if crouchTrack.IsPlaying then
-crouchTrack:Stop(0.2)
-end
-end
-end
--- Управление ходьбой, спринтом и скоростью анимации приседания
-local function updateLocomotionAnimation(speed, forceSprint)
-if isCrouching and crouchTrack then
-if walkTrack and walkTrack.IsPlaying then walkTrack:Stop(0.1) end
-if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.1) end
-if not crouchTrack.IsPlaying then
-crouchTrack:Play(0.2, 1, 0)
-end
--- В DOORS скорость анимации Crouch зависит от скорости движения (speed / 15)
-local crouchAnimSpeed = (speed > 0.5) and math.clamp(speed / 15, 0.3, 1.2) or 0
-crouchTrack:AdjustSpeed(crouchAnimSpeed)
-return
-end
-if not walkTrack then return end
-if speed > 0.8 then
-local useSprint = (forceSprint == true) and (sprintTrack ~= nil)
-if useSprint then
-if walkTrack.IsPlaying then walkTrack:Stop(0.15) end
-if not sprintTrack.IsPlaying then sprintTrack:Play(0.15, 1, math.clamp(speed / Config.SprintSpeed, 0.75, 1.4))
-else sprintTrack:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.75, 1.4)) end
-else
-if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.15) end
-if not walkTrack.IsPlaying then walkTrack:Play(0.15, 1, math.clamp(speed / Config.WalkSpeed, 0.65, 1.35))
-else walkTrack:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.65, 1.35)) end
-end
-else
-if walkTrack.IsPlaying then walkTrack:Stop(0.18) end
-if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.18) end
-end
-end
-local function setActiveMode(modeObj, subMode)
-if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
-activeMode.OnDeactivate()
-end
-if activeMode == modeObj and activeSubMode == subMode then
-if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
-activeMode, activeSubMode = nil, nil
-print("[MemeActor] Режим движения: ВЫКЛ")
-return
-end
-activeMode, activeSubMode = modeObj, subMode
-if activeMode and activeMode.OnActivate then
-activeMode.OnActivate(subMode)
-end
-print("[MemeActor] Активный режим:", modeObj.Name, subMode and ("(" .. subMode .. ")") or "")
-end
-local function removeClone()
-if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
-activeMode, activeSubMode = nil, nil
-cloneCFrame = nil
-lastFloorCheckPos, cachedFloorY = nil, nil
-cachedNeckMotor, cachedHeadPart, currentNeckCFrame = nil, nil, nil
-for _, track in ipairs({ walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack }) do
-if track then pcall(function() track:Stop() end) end
-end
-walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack = nil, nil, nil, nil, nil
-if activeClone then activeClone:Destroy() activeClone = nil end
-ENV.ActiveActorClone = nil
-end
-local function spawnCloneAtCamera(customDistance, preserveTransform)
-local savedCFrame = preserveTransform and cloneCFrame or nil
-local savedMode = preserveTransform and activeMode or nil
-local savedSub = preserveTransform and activeSubMode or nil
-local wasCrouching = preserveTransform and isCrouching or false
-removeClone()
-local spawnDist = customDistance or Config.SpawnDistanceFar
-local currentMode = ACTOR_MODES[currentModeIndex]
-local target = getTargetPlayer()
-local sourceChar = (target and target.Character) or LocalPlayer.Character
-local clone = nil
-if currentMode == "Player" then
-if not sourceChar then return end
-sourceChar.Archivable = true
-clone = sourceChar:Clone()
-sourceChar.Archivable = false
-if not clone then return end
-clone.Name = (target and target.Name or LocalPlayer.Name) .. "_MemeClone"
-for _, desc in ipairs(clone:GetDescendants()) do
-if desc:IsA("LocalScript") or desc:IsA("Script") or desc:IsA("Animator") then desc:Destroy() end
-end
-local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-for _, part in ipairs(clone:GetDescendants()) do
-if part:IsA("BasePart") then
-part.CanCollide, part.Massless = false, true
-part.Anchored = (part == root or part.Name == "CollisionPart" or part.Name == "HumanoidRootPart")
-part.LocalTransparencyModifier = 0
-elseif part:IsA("Decal") then part.LocalTransparencyModifier = 0 end
-end
-attachToolToRig(clone, sourceChar)
-else
-if not BuildPortraitRig then return end
-clone = BuildPortraitRig(currentMode)
-if sourceChar then attachToolToRig(clone, sourceChar) end
-end
-clone.Parent = workspace
-activeClone = clone
-ENV.ActiveActorClone = clone
-cacheHeadRigParts(clone)
-local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-rootToFeetOffset = (currentMode == "Player") and 3.55 or 3.65
-if savedCFrame then
-cloneCFrame = savedCFrame
-else
-local cam = workspace.CurrentCamera
-local lookFlat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
-if lookFlat.Magnitude < 0.01 then lookFlat = Vector3.new(0, 0, -1) else lookFlat = lookFlat.Unit end
-local spawnPos = cam.CFrame.Position + lookFlat * spawnDist
-local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
-local groundY = getFloorY(spawnPos, refY, true)
-local yaw = math.atan2(-lookFlat.X, -lookFlat.Z) + (faceCamera and math.pi or 0)
-cloneCFrame = CFrame.new(spawnPos.X, groundY, spawnPos.Z) * CFrame.Angles(0, yaw, 0)
-end
-if root then root.CFrame = cloneCFrame end
-local humanoid = clone:FindFirstChildOfClass("Humanoid")
-if humanoid then
-humanoid.EvaluateStateMachine = false
-humanoid.PlatformStand = false
-local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
-local animSourceChar = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Animations")) and LocalPlayer.Character or sourceChar
-local animFolder = animSourceChar and animSourceChar:FindFirstChild("Animations")
-if animFolder then
-local idleAnim = animFolder:FindFirstChild("Idle")
-if idleAnim and idleAnim:IsA("Animation") then
-idleTrack = animator:LoadAnimation(idleAnim)
-idleTrack.Looped, idleTrack.Priority = true, Enum.AnimationPriority.Idle
-idleTrack:Play(0.1)
-end
-local forwardAnim = animFolder:FindFirstChild("Forward")
-if forwardAnim and forwardAnim:IsA("Animation") then
-walkTrack = animator:LoadAnimation(forwardAnim)
-walkTrack.Looped, walkTrack.Priority = true, Enum.AnimationPriority.Action
-end
-local sprintingAnim = animFolder:FindFirstChild("Sprinting")
-if sprintingAnim and sprintingAnim:IsA("Animation") then
-sprintTrack = animator:LoadAnimation(sprintingAnim)
-sprintTrack.Looped, sprintTrack.Priority = true, Enum.AnimationPriority.Action
-end
-local crouchAnim = animFolder:FindFirstChild("Crouch")
-if crouchAnim and crouchAnim:IsA("Animation") then
-crouchTrack = animator:LoadAnimation(crouchAnim)
-crouchTrack.Looped, crouchTrack.Priority = true, Enum.AnimationPriority.Action2
-end
-end
-if not walkTrack then
-local fallbackAnim = Instance.new("Animation")
-fallbackAnim.AnimationId = "rbxassetid://913376220"
-walkTrack = animator:LoadAnimation(fallbackAnim)
-walkTrack.Looped, walkTrack.Priority = true, Enum.AnimationPriority.Action
-end
-playToolAnimation(clone, animator)
-end
-setCrouchState(wasCrouching)
-if savedMode then
-setActiveMode(savedMode, savedSub)
-end
-print("[MemeActor] Клон создан:", ACTOR_MODE_LABELS[currentMode])
-end
--- ============================================
--- API ДЛЯ ВНЕШНИХ РЕЖИМОВ ИЗ ПАПКИ modes/
--- ============================================
-local ModeAPI = {
-Config = Config,
-GetClone = function() return activeClone end,
-GetCFrame = function() return cloneCFrame end,
-SetCFrame = function(cf)
-cloneCFrame = cf
-if activeClone then
-local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
-if root then root.CFrame = cf end
-end
+    local ModeAPI = {
+        Config = Config, Import = Import,
+        GetClone = function() return activeClone end,
+        GetCFrame = function() return cloneCF end,
+        SetCFrame = function(cf)
+            cloneCF = cf
+            local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
+if r then r.CFrame = cf end
 end,
-GetFloorY = getFloorY,
-UpdateAnimation = updateLocomotionAnimation,
-GetSubMode = function() return activeSubMode end,
-SetSubMode = function(sub) activeSubMode = sub end,
-IsCrouching = function() return isCrouching end,
+GetFloorY = getFloorY, UpdateAnimation = updateAnim,
+GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub = s end,
+IsCrouching = function() return isCrouching end, IsHeadLookEnabled = function() return headLookOn end,
+AttachTool = function(mirrored) RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs) end,
+StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
+PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
 }
-local LocomotionFactory = Import("modes/LocomotionMode.lua")
-local StatueFactory     = Import("modes/StatueMode.lua")
-local LocomotionMode = LocomotionFactory and LocomotionFactory(ModeAPI)
-local StatueMode     = StatueFactory and StatueFactory(ModeAPI)
--- ============================================
--- УПРАВЛЕНИЕ
--- ============================================
-UserInputService.InputBegan:Connect(function(input, gp)
+local LoadedModes = {}
+for _, m in ipairs(Registry.ModeModules) do
+local f = Import(m.Path)
+if type(f) == "function" then LoadedModes[m.Id] = f(ModeAPI) end
+end
+local K = {}
+for name, info in pairs(Registry.SystemKeys) do K[name] = resolveKey(info) end
+local Binds = {}
+for _, b in ipairs(Registry.ModeBindings) do
+table.insert(Binds, { Key = resolveKey(b), Id = b.ModuleId, Sub = b.SubMode, Spawn = b.AutoSpawn })
+end
+UserInputService.InputBegan:Connect(function(inp, gp)
 if gp or UserInputService:GetFocusedTextBox() then return end
-local key = input.KeyCode
-if key == KEY_SPAWN then
-spawnCloneAtCamera(Config.SpawnDistanceFar, false)
-elseif key == KEY_SWITCH then
-local onlyPortraits = UserInputService:IsKeyDown(KEY_SPAWN)
+local key = inp.KeyCode
+if key == K.Spawn then spawnClone(Config.SpawnDistanceFar, false)
+elseif key == K.SwitchActor then
+local onlyP = UserInputService:IsKeyDown(K.Spawn)
 for _ = 1, #ACTOR_MODES do
-currentModeIndex = (currentModeIndex % #ACTOR_MODES) + 1
-if not onlyPortraits or ACTOR_MODES[currentModeIndex] ~= "Player" then break end
+modeIdx = (modeIdx % #ACTOR_MODES) + 1
+if not onlyP or ACTOR_MODES[modeIdx] ~= "Player" then break end
 end
-print("[MemeActor] Облик:", ACTOR_MODE_LABELS[ACTOR_MODES[currentModeIndex]])
-if activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, true) end
-elseif key == KEY_PACE then
-isSprintPace = not isSprintPace
-print("[MemeActor] Темп:", isSprintPace and "БЕГ (Sprinting)" or "ХОДЬБА (Forward)")
-elseif key == KEY_CROUCH then
-if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceClose, false) end
-setCrouchState(not isCrouching)
-print("[MemeActor] Приседание [T]:", isCrouching and "ВКЛ" or "ВЫКЛ")
-elseif key == KEY_STRAIGHT and LocomotionMode then
-if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceClose, false) end
-setActiveMode(LocomotionMode, "Straight")
-elseif key == KEY_CHASE and LocomotionMode then
-if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, false) end
-setActiveMode(LocomotionMode, "Chase")
-elseif key == KEY_STATUE and StatueMode then
-if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, false) end
-setActiveMode(StatueMode, nil)
-elseif key == KEY_HEADLOOK then
-headLookEnabled = not headLookEnabled
-currentNeckCFrame = nil
-print("[MemeActor] HeadLook 360° [K]:", headLookEnabled and "ВКЛ" or "ВЫКЛ")
-elseif key == KEY_ROTATE then
-faceCamera = not faceCamera
-if activeClone and cloneCFrame then
-ModeAPI.SetCFrame(cloneCFrame * CFrame.Angles(0, math.pi, 0))
+print("[MemeActor] Облик:", ACTOR_LABELS[ACTOR_MODES[modeIdx]])
+if activeClone then spawnClone(Config.SpawnDistanceFar, true) end
+elseif key == K.PaceToggle then isSprint = not isSprint; print("[MemeActor] Темп:", isSprint and "БЕГ" or "ХОДЬБА")
+elseif key == K.Crouch then if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(not isCrouching)
+elseif key == K.JitterToggle then jitterOn = not jitterOn; if not jitterOn then EffectsLib.ResetJitter(cachedJitter) end
+elseif key == K.HeadLook then headLookOn = not headLookOn; currentNeckCF = nil
+elseif key == K.Rotate then faceCam = not faceCam; if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
+elseif key == K.Remove then removeClone()
+else
+for _, b in ipairs(Binds) do
+if key == b.Key and LoadedModes[b.Id] then
+if not activeClone then spawnClone((b.Spawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false) end
+setMode(LoadedModes[b.Id], b.Sub)
+break
 end
-elseif key == KEY_REMOVE then
-removeClone()
+end
 end
 end)
 RunService.RenderStepped:Connect(function(dt)
-if not activeClone or not cloneCFrame or not activeMode then return end
-local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
-if not root then return end
-local myRoot = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
-local refY = myRoot and myRoot.Position.Y or cloneCFrame.Position.Y
-if activeMode.OnStep then
-activeMode.OnStep(dt, cloneCFrame, root, myRoot, refY, isSprintPace)
+if not activeClone or not cloneCF then return end
+local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
+if not r then return end
+if jitterOn then EffectsLib.UpdateJitter(cachedJitter, Config.JitterIntensity or 4.0) end
+if activeMode and activeMode.OnStep then
+local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
 end)
 RunService.Stepped:Connect(function(_, dt)
-if not headLookEnabled or not activeClone or not cachedNeckMotor or not cachedHeadPart then return end
-local camPos = workspace.CurrentCamera.CFrame.Position
-solveHeadLook(cachedNeckMotor, cachedHeadPart, camPos, dt)
+if not activeClone then return end
+if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
+for _, s in ipairs(cachedToolSyncs) do
+if s.dst.Parent and s.src.Parent then s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform end
+end
+if headLookOn then solveHeadLook(dt) end
 end)
-print("[MemeActor v" .. tostring(Config.Version) .. "] Загружено! [Z] Спавн | [G] Облик | [T] Присед | [F] Бег | [L] Темп | [N] Догонялки | [H] Статуя | [K] HeadLook | [V] Удалить")
+Registry.PrintStartupBanner(Config)
 end
