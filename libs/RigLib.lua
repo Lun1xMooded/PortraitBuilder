@@ -44,21 +44,37 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     if not sourceTool then return end
 
     task.spawn(function()
+        -- Ждём появления именно игрового мотора "Handle" или "LeftHandle" (игнорируя временный RightGrip!)
         local srcMotors = {}
-        for _ = 1, 30 do
+        local fallbackGrip = nil
+
+        for attempt = 1, 35 do
             if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
             table.clear(srcMotors)
+            fallbackGrip = nil
+
             for _, desc in ipairs(sourceChar:GetDescendants()) do
                 if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) then
-                    if desc.Name == "Handle" or desc.Name == "RightGrip" then
+                    if desc.Name == "Handle" then
                         srcMotors.Handle = desc
-                    elseif desc.Name == "LeftHandle" or desc.Name == "LeftGrip" then
+                    elseif desc.Name == "LeftHandle" then
                         srcMotors.LeftHandle = desc
+                    elseif desc.Name == "RightGrip" then
+                        fallbackGrip = desc
                     end
                 end
             end
-            if srcMotors.Handle or srcMotors.LeftHandle then break end
+
+            -- Выходим сразу, если нашёлся кастомный мотор DOORS ("Handle" / "LeftHandle"),
+            -- либо если прошло 20 кадров и у предмета есть только стандартный RightGrip
+            if srcMotors.Handle or srcMotors.LeftHandle or (attempt >= 20 and fallbackGrip) then
+                break
+            end
             task.wait()
+        end
+
+        if not srcMotors.Handle and fallbackGrip then
+            srcMotors.Handle = fallbackGrip
         end
 
         if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
@@ -96,7 +112,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             elseif d:IsA("Decal") then
                 d.LocalTransparencyModifier = 0
             elseif (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and srcInnerMotors[d.Name] then
-                -- Внутренние моторы самого предмета (Switch, RingJoint и др.) НЕ зеркалим, чтобы детали не разъезжались
                 table.insert(cachedToolSyncs, { dst = d, src = srcInnerMotors[d.Name], mirror = false })
             end
         end
@@ -126,12 +141,11 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                     newJoint.Name = cfg.key
                     newJoint.Part0 = cfg.hand
                     newJoint.Part1 = cfg.part
-                    -- Используем чистые C0 и C1 из руки игрока без смещения ToolGripOffset
                     newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(srcM.C0) or srcM.C0
                     newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(srcM.C1) or srcM.C1
                     newJoint.Parent = cfg.hand
 
-                    table.insert(cachedToolSyncs, { dst = newJoint, src = srcM, mirror = isMirrored })
+                    table.insert(cachedToolSyncs, { dst = newJoint, src = srcM, mirror = isMirrored, syncOffsets = true })
                 elseif cfg.key == "Handle" then
                     local fallback = Instance.new("Motor6D")
                     fallback.Name = "Handle"

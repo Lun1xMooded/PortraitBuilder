@@ -70,19 +70,18 @@ return function(Import, Config)
         cachedNeck.Transform = currentNeckCF
     end
 
-        local function updateToolDrivers()
+    local function updateToolDrivers()
         for _, s in ipairs(cachedToolSyncs) do
-            if s.isDriver then
-                if s.part.Parent and s.hand.Parent and s.src.Parent then
-                    local c0 = s.gripInv and (s.src.C0 * s.gripInv) or s.src.C0
-                    local rel = c0 * s.src.Transform * s.src.C1:Inverse()
-                    s.part.CFrame = s.hand.CFrame * MirrorLib.MirrorTransform(rel)
+            if s.dst.Parent and s.src.Parent then
+                if s.syncOffsets then
+                    s.dst.C0 = s.mirror and MirrorLib.MirrorTransform(s.src.C0) or s.src.C0
+                    s.dst.C1 = s.mirror and MirrorLib.MirrorTransform(s.src.C1) or s.src.C1
                 end
-            elseif s.dst.Parent and s.src.Parent then
                 s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
             end
         end
     end
+
 
 
     local function setCrouch(state)
