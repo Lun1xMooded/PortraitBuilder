@@ -1,5 +1,5 @@
 -- libs/CombatLib.lua
--- Надёжный отлов удара BoxingGloves, анимация удара клона и физическое отбрасывание
+-- Жёсткий нокаут с рэгдоллом, баллистика с учётом перепадов высот DOORS и отлёт игрока
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,14 +12,13 @@ local SWING_IDS = {
     "rbxassetid://98472295325859",  -- swing2
 }
 
--- 1. Удар клона перчатками (останавливаем мешающий idle-трек инструмента на время хука!)
+-- 1. Удар клона перчатками (перекрывает idle-стойку инструмента)
 function CombatLib.PlayCloneSwing(clone, comboIndex)
     if not clone then return 1 end
     local hum = clone:FindFirstChildOfClass("Humanoid")
     local animator = hum and hum:FindFirstChildOfClass("Animator")
     if not animator then return comboIndex or 1 end
 
-    -- Временно глушим все Action-анимации (включая idle перчаток), чтобы хук прошёл на 100%
     for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
         if tr.Priority == Enum.AnimationPriority.Action4 or tr.Priority == Enum.AnimationPriority.Action3 then
             tr:Stop(0.05)
@@ -33,12 +32,12 @@ function CombatLib.PlayCloneSwing(clone, comboIndex)
     local track = animator:LoadAnimation(anim)
     track.Looped = false
     track.Priority = Enum.AnimationPriority.Action4
-    track:Play(0.05, 1, 1.2)
+    track:Play(0.05, 1, 1.25)
 
     return (idx == 1) and 2 or 1
 end
 
--- 2. Надёжное отбрасывание локального игрока (через BodyVelocity на CollisionPart, как в Movement DOORS)
+-- 2. Жёсткий нокаут и отлёт локального игрока назад
 function CombatLib.KnockbackPlayer(fromPos, power)
     local char = LocalPlayer.Character
     if not char then return end
@@ -49,18 +48,33 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     local dir = (root.Position - fromPos) * Vector3.new(1, 0, 1)
     dir = (dir.Magnitude > 0.01) and dir.Unit or -root.CFrame.LookVector
 
+    local launchVel = dir * (power or 85) + Vector3.new(0, 36, 0)
+
+    hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(15000, 15000, 15000)
-    bv.Velocity = dir * (power or 52) + Vector3.new(0, 18, 0)
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.P = 50000
+    bv.Velocity = launchVel
     bv.Parent = root
 
-    task.delay(0.28, function()
+    root.AssemblyLinearVelocity = launchVel
+    root.AssemblyAngularVelocity = Vector3.new(math.random(-12, 12), math.random(-8, 8), math.random(-12, 12))
+
+    task.delay(0.32, function()
         if bv and bv.Parent then bv:Destroy() end
+    end)
+
+    task.delay(1.3, function()
+        if hum and hum.Parent and hum.Health > 0 then
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
     end)
 end
 
--- 3. Рэгдолл + гарантированный отлёт клона по физической дуге (не ломается из-за Anchored Root!)
-function CombatLib.ApplyRagdoll(clone, knockbackDir, power, getFloorYFn)
+-- 3. Жёсткий нокаут клона: высокий подлёт, кувырки в воздухе, отскок от стен и защита от провала под карту
+function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
@@ -68,7 +82,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power, getFloorYFn)
     local savedMotors = {}
     local tempRagdoll = {}
 
-    -- Заменяем суставы на BallSocketConstraint, чтобы конечности болтались при полёте
     for _, desc in ipairs(clone:GetDescendants()) do
         if desc:IsA("Motor6D") and desc.Part0 and desc.Part1 and desc.Name ~= "Handle" and desc.Name ~= "LeftHandle" then
             local a0 = Instance.new("Attachment")
@@ -84,9 +97,9 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power, getFloorYFn)
             socket.Attachment1 = a1
             socket.LimitsEnabled = true
             socket.TwistLimitsEnabled = true
-            socket.UpperAngle = 50
-            socket.TwistLowerAngle = -40
-            socket.TwistUpperAngle = 40
+            socket.UpperAngle = 65
+            socket.TwistLowerAngle = -55
+            socket.TwistUpperAngle = 55
             socket.Parent = desc.Part0
 
             table.insert(savedMotors, { motor = desc, parent = desc.Parent })
@@ -105,29 +118,63 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power, getFloorYFn)
         end
     end
 
-    -- Управляемая баллистика отлёта клона назад (Root остаётся Anchored и летит по дуге без провалов под пол)
+    -- Настройка Raycast с учётом перепадов высот (лестницы, горки, разные уровни комнат DOORS)
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.RespectCanCollide = true
+    local ignoreList = { clone }
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then table.insert(ignoreList, p.Character) end
+    end
+    rp.FilterDescendantsInstances = ignoreList
+
     root.Anchored = true
     local dir = (knockbackDir * Vector3.new(1, 0, 1))
     dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
 
-    local vel = dir * (power or 42) + Vector3.new(0, 22, 0)
-    local rotSpeed = Vector3.new(math.rad(-260), math.rad(math.random(-90, 90)), math.rad(math.random(-120, 120)))
+    -- Сочный апперкот: клон высоко подлетает и мощно улетает назад!
+    local vel = dir * (power or 90) + Vector3.new(0, 42, 0)
+    local rotSpeed = Vector3.new(math.rad(-480), math.rad(math.random(-180, 180)), math.rad(math.random(-240, 240)))
     local curCF = root.CFrame
     local flying = true
 
     local flyConn = RunService.RenderStepped:Connect(function(dt)
         if not flying or not root or not root.Parent then return end
-        vel = vel + Vector3.new(0, -68 * dt, 0) -- гравитация
-        local nextPos = curCF.Position + vel * dt
+        local stepDt = math.min(dt, 0.05)
 
-        local floorLimit = getFloorYFn and (getFloorYFn(nextPos, curCF.Position.Y, false) - 2.3) or (curCF.Position.Y - 2.3)
-        if nextPos.Y <= floorLimit and vel.Y < 0 then
-            nextPos = Vector3.new(nextPos.X, floorLimit, nextPos.Z)
-            vel = Vector3.new(vel.X * 0.72, 0, vel.Z * 0.72) -- скольжение по полу после падения
-            rotSpeed = rotSpeed * 0.6
+        vel = vel + Vector3.new(0, -85 * stepDt, 0) -- сильная гравитация для резкого полёта
+        local moveDelta = vel * stepDt
+
+        -- 1. Проверка столкновения со стенами комнаты (чтобы не вылетал за карту)
+        local flatMove = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+        if flatMove.Magnitude > 0.01 then
+            local wallHit = workspace:Raycast(curCF.Position + Vector3.new(0, 1, 0), flatMove.Unit * (flatMove.Magnitude + 1.5), rp)
+            if wallHit then
+                -- Отскок от стены с потерей части скорости
+                local n = wallHit.Normal
+                vel = (vel - 2 * vel:Dot(n) * n) * 0.45
+                moveDelta = vel * stepDt
+            end
         end
 
-        curCF = CFrame.new(nextPos) * curCF.Rotation * CFrame.Angles(rotSpeed.X * dt, rotSpeed.Y * dt, rotSpeed.Z * dt)
+        local nextPos = curCF.Position + moveDelta
+
+        -- 2. Поиск пола сверху вниз (+18 стадов вверх до -100 вниз), чтобы ловить лестницы и перепады высот DOORS!
+        local floorHit = workspace:Raycast(Vector3.new(nextPos.X, nextPos.Y + 18, nextPos.Z), Vector3.new(0, -118, 0), rp)
+        local floorY = floorHit and (floorHit.Position.Y + 1.2) or (curCF.Position.Y - 2.0)
+
+        if nextPos.Y <= floorY and vel.Y <= 0 then
+            nextPos = Vector3.new(nextPos.X, floorY, nextPos.Z)
+            -- Небольшой отскок от пола при первом ударе и скольжение
+            if vel.Y < -18 then
+                vel = Vector3.new(vel.X * 0.65, -vel.Y * 0.25, vel.Z * 0.65)
+            else
+                vel = Vector3.new(vel.X * 0.82, 0, vel.Z * 0.82)
+                rotSpeed = rotSpeed * 0.75
+            end
+        end
+
+        curCF = CFrame.new(nextPos) * curCF.Rotation * CFrame.Angles(rotSpeed.X * stepDt, rotSpeed.Y * stepDt, rotSpeed.Z * stepDt)
         root.CFrame = curCF
     end)
 
@@ -159,7 +206,7 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power, getFloorYFn)
     end
 end
 
--- 4. Надёжный отлов удара игрока (проверяет OnCooldown на Tool + клик мышью с BoxingGloves в руках)
+-- 4. Отслеживает удар игрока (OnCooldown на BoxingGloves + резерв по клику мыши)
 function CombatLib.BindPlayerPunch(onPunchCallback)
     local activeToolConn = nil
     local charAddedConn = nil
@@ -167,7 +214,7 @@ function CombatLib.BindPlayerPunch(onPunchCallback)
     local lastPunchTick = 0
 
     local function trigger()
-        if os.clock() - lastPunchTick > 0.25 then
+        if os.clock() - lastPunchTick > 0.22 then
             lastPunchTick = os.clock()
             onPunchCallback()
         end

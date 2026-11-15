@@ -1,5 +1,5 @@
 -- modes/HardcoreChaseMode.lua
--- Хардкорные догонялки [Q] + ответный удар BoxingGloves с рэгдоллом и форой 5 сек
+-- Хардкорные догонялки [Q] + жёсткий нокаут перчатками BoxingGloves (для клона и игрока)
 
 return function(API)
     local Players = game:GetService("Players")
@@ -16,18 +16,26 @@ return function(API)
     local punchDisconnect = nil
     local comboIdx = 1
 
-    local KILL_DISTANCE = 3.2
-    local PUNCH_HIT_RANGE = 8.5
+    local KILL_DISTANCE = 3.5
+    local PUNCH_HIT_RANGE = 10.0
     local RETREAT_DISTANCE = 12
     local GRACE_SECONDS = 5.0
-    local RAGDOLL_SECONDS = 2.2
+    local RAGDOLL_SECONDS = 2.4
 
-    local function triggerKill(myChar)
+    local function triggerKill(myChar, clonePos)
         if killTriggered then return end
         killTriggered = true
-        print("[HardcoreChase] ПОЙМАН! Смертельный контакт.")
+        print("[HardcoreChase] НОКАУТ ИГРОКА! Смертельный удар.")
+
+        -- Жёстко отбрасываем игрока назад в полёт
+        CombatLib.KnockbackPlayer(clonePos, 95)
+
         local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-        if hum then hum.Health = 0 end
+        if hum then
+            task.delay(0.15, function()
+                if hum and hum.Parent then hum.Health = 0 end
+            end)
+        end
     end
 
     local function onPlayerBoxingPunch()
@@ -40,11 +48,11 @@ return function(API)
 
         local toClone = (cloneCF.Position - myRoot.Position) * Vector3.new(1, 0, 1)
         if toClone.Magnitude <= PUNCH_HIT_RANGE then
-            print("[HardcoreChase] НОКАУТ ПЕРЧАТКАМИ! Рэгдолл + фора 5 секунд!")
+            print("[HardcoreChase] ЖЁСТКИЙ НОКАУТ ПЕРЧАТКАМИ! Клон улетает в рэгдолл + фора 5 сек!")
             API.UpdateAnimation(0, false)
             velocity = Vector3.zero
             ragdollTimer = RAGDOLL_SECONDS
-            restoreFromRagdoll = CombatLib.ApplyRagdoll(clone, toClone.Unit, 58)
+            restoreFromRagdoll = CombatLib.ApplyRagdoll(clone, toClone.Unit, 92)
         end
     end
 
@@ -64,7 +72,7 @@ return function(API)
             if punchDisconnect then punchDisconnect() end
             punchDisconnect = CombatLib.BindPlayerPunch(onPlayerBoxingPunch)
 
-            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 5. Бей BoxingGloves для нокаута!")
+            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 5. Бей BoxingGloves для жёсткого нокаута!")
         end,
 
         OnDeactivate = function()
@@ -93,18 +101,17 @@ return function(API)
                 return
             end
 
-            -- 0. КЛОН В РЭГДОЛЛЕ ПОСЛЕ УДАРА ПЕРЧАТКАМИ
+            -- 0. КЛОН В ПОЛЁТЕ / РЭГДОЛЛЕ ПОСЛЕ НОКАУТА
             if ragdollTimer > 0 then
                 ragdollTimer = math.max(0, ragdollTimer - dt)
                 if ragdollTimer <= 0 and restoreFromRagdoll then
                     local landedCF = restoreFromRagdoll()
                     restoreFromRagdoll = nil
                     if landedCF then
-                        local floorY = API.GetFloorY(landedCF.Position, refY, true)
+                        local floorY = API.GetFloorY(landedCF.Position, landedCF.Position.Y + 5, true)
                         local flatLook = Vector3.new(myRoot.Position.X, floorY, myRoot.Position.Z)
                         API.SetCFrame(CFrame.lookAt(Vector3.new(landedCF.X, floorY, landedCF.Z), flatLook))
                     end
-                    -- Встаёт с рэгдолла и даёт игроку фору 5 секунд
                     graceTimer = GRACE_SECONDS
                     lastCountdownInt = -1
                     print("[HardcoreChase] Клон встаёт после нокаута! Фора 5 секунд...")
@@ -139,7 +146,7 @@ return function(API)
                 return
             end
 
-            -- 2. ФОРА 5 СЕКУНД ПОСЛЕ ВЫХОДА ИЗ ШКАФА ИЛИ ПОСЛЕ РЭГДОЛЛА
+            -- 2. ФОРА 5 СЕКУНД ПОСЛЕ ВЫХОДА ИЗ ШКАФА
             if wasHiding then
                 wasHiding = false
                 graceTimer = GRACE_SECONDS
@@ -167,10 +174,8 @@ return function(API)
             local cloneSpeed = math.max(3, playerWalkSpeed - 5)
 
             if dist <= KILL_DISTANCE then
-                -- Если на клоне надеты BoxingGloves, перед смертью проигрывает удар swing1/swing2
                 comboIdx = CombatLib.PlayCloneSwing(API.GetClone(), comboIdx)
-				CombatLib.KnockbackPlayer(cloneCFrame.Position, 55)
-                triggerKill(myChar)
+                triggerKill(myChar, cloneCFrame.Position)
                 return
             end
 

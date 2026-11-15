@@ -275,10 +275,10 @@ if not myRoot then return end
 for _, entry in ipairs(allClones) do
 if entry.model and entry.model.Parent and not entry.isRagdoll and entry.cframe then
 local toClone = (entry.cframe.Position - myRoot.Position) * Vector3.new(1, 0, 1)
-if toClone.Magnitude <= 8.5 then
+if toClone.Magnitude <= 10 then
 entry.isRagdoll = true
 print("[MemeActor] Удар перчатками по манекену! Рэгдолл на 2.2 сек.")
-local restoreFn = CombatLib.ApplyRagdoll(entry.model, toClone.Unit, 55)
+local restoreFn = CombatLib.ApplyRagdoll(entry.model, toClone.Unit, 92)
 task.delay(2.2, function()
 if restoreFn and entry.model and entry.model.Parent then
 local landedCF = restoreFn()
