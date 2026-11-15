@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.1"
+local VERSION = "0.2"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -11,6 +11,7 @@ local DEFAULT_CONFIG = {
     TargetPlayerName = "",
     SpawnDistanceFar = 15,
     SpawnDistanceClose = 10,
+    CrouchSpeed = 10, -- Скорость в приседе из Movement DOORS
     WalkSpeed = 14,
     SprintSpeed = 21,
     ChaseStopDistance = 10,
@@ -20,8 +21,9 @@ local DEFAULT_CONFIG = {
     Keys = {
         Spawn = "Z",
         SwitchActor = "G",
-        StraightMove = "F", -- Прямой ход/бег перенесён на F
+        StraightMove = "F",
         PaceToggle = "L",
+        CrouchToggle = "T", -- Безопасная клавиша для приседания клона
         Chase = "N",
         Statue = "H",
         HeadLook = "K",
@@ -32,7 +34,6 @@ local DEFAULT_CONFIG = {
 
 function ConfigManager.Load()
     if not isfolder or not makefolder or not writefile or not readfile or not isfile then
-        warn("[MemeActor] Экзекутор не поддерживает файловую систему (writefile/readfile). Используется стандартный конфиг.")
         return DEFAULT_CONFIG
     end
 
@@ -41,8 +42,7 @@ function ConfigManager.Load()
     end
 
     if not isfile(FILE_PATH) then
-        local encoded = HttpService:JSONEncode(DEFAULT_CONFIG)
-        writefile(FILE_PATH, encoded)
+        writefile(FILE_PATH, HttpService:JSONEncode(DEFAULT_CONFIG))
         print("[MemeActor] Создан новый конфиг версии v" .. VERSION .. " -> " .. FILE_PATH)
         return DEFAULT_CONFIG
     end
@@ -52,7 +52,6 @@ function ConfigManager.Load()
     end)
 
     if ok and type(decoded) == "table" and decoded.Version == VERSION then
-        -- Дополняем недостающие ключи на случай ручного редактирования
         for k, v in pairs(DEFAULT_CONFIG) do
             if decoded[k] == nil then decoded[k] = v end
         end
@@ -62,7 +61,6 @@ function ConfigManager.Load()
         return decoded
     else
         writefile(FILE_PATH, HttpService:JSONEncode(DEFAULT_CONFIG))
-        print("[MemeActor] Конфиг перезаписан под версию v" .. VERSION)
         return DEFAULT_CONFIG
     end
 end

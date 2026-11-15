@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Modular Architecture v0.1)
+-- core/MainEngine.lua (Modular Architecture v0.2 + Crouch [T])
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -12,12 +12,9 @@ return function(Import, Config)
     end
     ENV.GardenVisibilityPatch = true
 
-    -- Загружаем билдер из builders/
     local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
     if type(BuildPortraitRig) == "function" then
         ENV.BuildPortraitRig = BuildPortraitRig
-    else
-        warn("[MemeActor] Ошибка загрузки builders/PortraitBuilder.lua!")
     end
 
     local function getKey(name, fallback)
@@ -29,6 +26,7 @@ return function(Import, Config)
     local KEY_SWITCH   = getKey("SwitchActor", Enum.KeyCode.G)
     local KEY_STRAIGHT = getKey("StraightMove", Enum.KeyCode.F)
     local KEY_PACE     = getKey("PaceToggle", Enum.KeyCode.L)
+    local KEY_CROUCH   = getKey("CrouchToggle", Enum.KeyCode.T)
     local KEY_CHASE    = getKey("Chase", Enum.KeyCode.N)
     local KEY_STATUE   = getKey("Statue", Enum.KeyCode.H)
     local KEY_HEADLOOK = getKey("HeadLook", Enum.KeyCode.K)
@@ -43,9 +41,10 @@ return function(Import, Config)
     }
     local currentModeIndex = 1
     local isSprintPace = false
+    local isCrouching = false
 
     -- ============================================
-    -- HEADLOOK 360° (Встроено в MainEngine)
+    -- HEADLOOK 360°
     -- ============================================
     local currentNeckCFrame = nil
 
@@ -88,14 +87,12 @@ return function(Import, Config)
     -- ============================================
     local activeClone, cloneCFrame = nil, nil
     local headLookEnabled, faceCamera = false, false
-    local walkTrack, sprintTrack, idleTrack, toolTrack = nil, nil, nil, nil
+    local walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack = nil, nil, nil, nil, nil
     local rootToFeetOffset = 3.55
 
     local cachedNeckMotor, cachedHeadPart = nil, nil
     local lastFloorCheckPos, cachedFloorY = nil, nil
-
-    local activeMode = nil
-    local activeSubMode = nil
+    local activeMode, activeSubMode = nil, nil
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
@@ -233,7 +230,35 @@ return function(Import, Config)
         toolTrack:Play(0.1)
     end
 
-    local function updateLocomotionAnimation(speed, forceSprint)
+-- Управление приседанием (по логике Movement DOORS: Crouch.Play(0.2, 1, speed/15))
+local function setCrouchState(state)
+isCrouching = state
+if not crouchTrack then return end
+if isCrouching then
+if walkTrack and walkTrack.IsPlaying then walkTrack:Stop(0.15) end
+if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.15) end
+if not crouchTrack.IsPlaying then
+crouchTrack:Play(0.2, 1, 0)
+end
+else
+if crouchTrack.IsPlaying then
+crouchTrack:Stop(0.2)
+end
+end
+end
+-- Управление ходьбой, спринтом и скоростью анимации приседания
+local function updateLocomotionAnimation(speed, forceSprint)
+if isCrouching and crouchTrack then
+if walkTrack and walkTrack.IsPlaying then walkTrack:Stop(0.1) end
+if sprintTrack and sprintTrack.IsPlaying then sprintTrack:Stop(0.1) end
+if not crouchTrack.IsPlaying then
+crouchTrack:Play(0.2, 1, 0)
+end
+-- В DOORS скорость анимации Crouch зависит от скорости движения (speed / 15)
+local crouchAnimSpeed = (speed > 0.5) and math.clamp(speed / 15, 0.3, 1.2) or 0
+crouchTrack:AdjustSpeed(crouchAnimSpeed)
+return
+end
 if not walkTrack then return end
 if speed > 0.8 then
 local useSprint = (forceSprint == true) and (sprintTrack ~= nil)
@@ -255,16 +280,13 @@ local function setActiveMode(modeObj, subMode)
 if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
 activeMode.OnDeactivate()
 end
--- Если нажали ту же самую кнопку и подрежим — выключаем
 if activeMode == modeObj and activeSubMode == subMode then
 if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
-activeMode = nil
-activeSubMode = nil
+activeMode, activeSubMode = nil, nil
 print("[MemeActor] Режим движения: ВЫКЛ")
 return
 end
-activeMode = modeObj
-activeSubMode = subMode
+activeMode, activeSubMode = modeObj, subMode
 if activeMode and activeMode.OnActivate then
 activeMode.OnActivate(subMode)
 end
@@ -276,10 +298,10 @@ activeMode, activeSubMode = nil, nil
 cloneCFrame = nil
 lastFloorCheckPos, cachedFloorY = nil, nil
 cachedNeckMotor, cachedHeadPart, currentNeckCFrame = nil, nil, nil
-for _, track in ipairs({ walkTrack, sprintTrack, idleTrack, toolTrack }) do
+for _, track in ipairs({ walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack }) do
 if track then pcall(function() track:Stop() end) end
 end
-walkTrack, sprintTrack, idleTrack, toolTrack = nil, nil, nil, nil
+walkTrack, sprintTrack, idleTrack, crouchTrack, toolTrack = nil, nil, nil, nil, nil
 if activeClone then activeClone:Destroy() activeClone = nil end
 ENV.ActiveActorClone = nil
 end
@@ -287,6 +309,7 @@ local function spawnCloneAtCamera(customDistance, preserveTransform)
 local savedCFrame = preserveTransform and cloneCFrame or nil
 local savedMode = preserveTransform and activeMode or nil
 local savedSub = preserveTransform and activeSubMode or nil
+local wasCrouching = preserveTransform and isCrouching or false
 removeClone()
 local spawnDist = customDistance or Config.SpawnDistanceFar
 local currentMode = ACTOR_MODES[currentModeIndex]
@@ -360,6 +383,11 @@ if sprintingAnim and sprintingAnim:IsA("Animation") then
 sprintTrack = animator:LoadAnimation(sprintingAnim)
 sprintTrack.Looped, sprintTrack.Priority = true, Enum.AnimationPriority.Action
 end
+local crouchAnim = animFolder:FindFirstChild("Crouch")
+if crouchAnim and crouchAnim:IsA("Animation") then
+crouchTrack = animator:LoadAnimation(crouchAnim)
+crouchTrack.Looped, crouchTrack.Priority = true, Enum.AnimationPriority.Action2
+end
 end
 if not walkTrack then
 local fallbackAnim = Instance.new("Animation")
@@ -369,6 +397,7 @@ walkTrack.Looped, walkTrack.Priority = true, Enum.AnimationPriority.Action
 end
 playToolAnimation(clone, animator)
 end
+setCrouchState(wasCrouching)
 if savedMode then
 setActiveMode(savedMode, savedSub)
 end
@@ -392,8 +421,8 @@ GetFloorY = getFloorY,
 UpdateAnimation = updateLocomotionAnimation,
 GetSubMode = function() return activeSubMode end,
 SetSubMode = function(sub) activeSubMode = sub end,
+IsCrouching = function() return isCrouching end,
 }
--- Загружаем режимы из папки modes/
 local LocomotionFactory = Import("modes/LocomotionMode.lua")
 local StatueFactory     = Import("modes/StatueMode.lua")
 local LocomotionMode = LocomotionFactory and LocomotionFactory(ModeAPI)
@@ -417,6 +446,10 @@ if activeClone then spawnCloneAtCamera(Config.SpawnDistanceFar, true) end
 elseif key == KEY_PACE then
 isSprintPace = not isSprintPace
 print("[MemeActor] Темп:", isSprintPace and "БЕГ (Sprinting)" or "ХОДЬБА (Forward)")
+elseif key == KEY_CROUCH then
+if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceClose, false) end
+setCrouchState(not isCrouching)
+print("[MemeActor] Приседание [T]:", isCrouching and "ВКЛ" or "ВЫКЛ")
 elseif key == KEY_STRAIGHT and LocomotionMode then
 if not activeClone then spawnCloneAtCamera(Config.SpawnDistanceClose, false) end
 setActiveMode(LocomotionMode, "Straight")
@@ -439,9 +472,6 @@ elseif key == KEY_REMOVE then
 removeClone()
 end
 end)
--- ============================================
--- ЦИКЛ ОБНОВЛЕНИЯ РЕЖИМОВ И HEADLOOK
--- ============================================
 RunService.RenderStepped:Connect(function(dt)
 if not activeClone or not cloneCFrame or not activeMode then return end
 local root = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
@@ -457,5 +487,5 @@ if not headLookEnabled or not activeClone or not cachedNeckMotor or not cachedHe
 local camPos = workspace.CurrentCamera.CFrame.Position
 solveHeadLook(cachedNeckMotor, cachedHeadPart, camPos, dt)
 end)
-print("[MemeActor v" .. tostring(Config.Version) .. "] Модульное ядро загружено! [Z] Спавн | [G] Облик | [F] Бег | [L] Темп | [N] Догонялки | [H] Статуя | [K] HeadLook | [V] Удалить")
+print("[MemeActor v" .. tostring(Config.Version) .. "] Загружено! [Z] Спавн | [G] Облик | [T] Присед | [F] Бег | [L] Темп | [N] Догонялки | [H] Статуя | [K] HeadLook | [V] Удалить")
 end

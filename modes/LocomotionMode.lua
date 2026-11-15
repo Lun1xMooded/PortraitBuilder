@@ -1,15 +1,21 @@
 -- modes/LocomotionMode.lua
--- Прямой бег/ходьба [F] и преследование с инерцией [N]
+-- Прямой бег/ходьба [F] и преследование [N] с учётом приседания [T]
 
 return function(API)
     local Config = API.Config
     local chaseVelocity = Vector3.zero
 
+    local function getActiveSpeed(isSprintPace)
+        if API.IsCrouching() then
+            return Config.CrouchSpeed or 10
+        end
+        return isSprintPace and Config.SprintSpeed or Config.WalkSpeed
+    end
+
     return {
         Name = "Locomotion",
 
         OnActivate = function(subMode)
-            -- subMode: "Straight" ([F]) или "Chase" ([N])
             chaseVelocity = Vector3.zero
             API.SetSubMode(subMode)
         end,
@@ -21,19 +27,16 @@ return function(API)
 
         OnStep = function(dt, cloneCFrame, root, myRoot, refY, isSprintPace)
             local subMode = API.GetSubMode()
-            local speed = isSprintPace and Config.SprintSpeed or Config.WalkSpeed
+            local speed = getActiveSpeed(isSprintPace)
 
-            -- 1. ПРЯМОЙ ХОД / БЕГ [F]
             if subMode == "Straight" then
                 API.UpdateAnimation(speed, isSprintPace)
                 local nextPos = cloneCFrame.Position + cloneCFrame.LookVector * speed * dt
                 local floorY = API.GetFloorY(nextPos, refY, false)
-                local newCF = CFrame.new(nextPos.X, floorY, nextPos.Z) * cloneCFrame.Rotation
-                API.SetCFrame(newCF)
+                API.SetCFrame(CFrame.new(nextPos.X, floorY, nextPos.Z) * cloneCFrame.Rotation)
                 return
             end
 
-            -- 2. ПРЕСЛЕДОВАНИЕ / ДОГОНЯЛКИ [N]
             if subMode == "Chase" and myRoot then
                 local toPlayer = (myRoot.Position - cloneCFrame.Position) * Vector3.new(1, 0, 1)
                 local dist = toPlayer.Magnitude
@@ -49,13 +52,11 @@ return function(API)
                     API.UpdateAnimation(spd, isSprintPace)
                     local nextPos = cloneCFrame.Position + chaseVelocity * dt
                     local floorY = API.GetFloorY(nextPos, refY, false)
-                    local newCF = CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.new(nextPos.X + chaseVelocity.X, floorY, nextPos.Z + chaseVelocity.Z))
-                    API.SetCFrame(newCF)
+                    API.SetCFrame(CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.new(nextPos.X + chaseVelocity.X, floorY, nextPos.Z + chaseVelocity.Z)))
                 else
                     API.UpdateAnimation(0, false)
                     local lookTarget = Vector3.new(myRoot.Position.X, cloneCFrame.Position.Y, myRoot.Position.Z)
-                    local newCF = cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 8, 0, 1))
-                    API.SetCFrame(newCF)
+                    API.SetCFrame(cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 8, 0, 1)))
                 end
             end
         end
