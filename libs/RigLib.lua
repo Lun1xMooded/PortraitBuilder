@@ -21,10 +21,10 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
 
     local sourceChar = LocalPlayer.Character
     for _, oldTool in ipairs(clone:GetChildren()) do
-        if oldTool:IsA("Tool") then oldTool:Destroy() end
+        if oldTool:IsA("Tool") or oldTool.Name == "MirrorTool" then oldTool:Destroy() end
     end
     for _, desc in ipairs(clone:GetDescendants()) do
-        if desc:IsA("Motor6D") and (desc.Name == "RightGrip" or desc.Name == "LeftGrip") then
+        if desc:IsA("Motor6D") and (desc.Name == "RightGrip" or desc.Name == "LeftGrip" or desc.Name == "Handle") then
             desc:Destroy()
         end
     end
@@ -33,20 +33,18 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local sourceTool = sourceChar:FindFirstChildOfClass("Tool")
     if not sourceTool then return end
 
-    local targetHand = clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm")
+    -- В MirrorMode (как в PortraitTwinTool) предмет крепится в LeftHand, в обычном режиме — в RightHand
+    local targetHand = isMirrored
+        and (clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm"))
+        or (clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm"))
     if not targetHand then return end
 
-    local sourceHand = sourceChar:FindFirstChild("RightHand") or sourceChar:FindFirstChild("Right Arm")
-    local origJoint, origPart1Name = nil, nil
-    if sourceHand then
-        for _, desc in ipairs(sourceChar:GetDescendants()) do
-            if (desc:IsA("Motor6D") or desc:IsA("Weld")) then
-                if desc.Part0 == sourceHand and desc.Part1 and desc.Part1:IsDescendantOf(sourceTool) then
-                    origJoint, origPart1Name = desc, desc.Part1.Name break
-                elseif desc.Part1 == sourceHand and desc.Part0 and desc.Part0:IsDescendantOf(sourceTool) then
-                    origJoint, origPart1Name = desc, desc.Part0.Name break
-                end
-            end
+    -- Ищем оригинальный Motor6D "Handle" в персонаже игрока (как ToolCache.findMotor в PortraitTwinTool)
+    local srcHandleMotor = nil
+    for _, desc in ipairs(sourceChar:GetDescendants()) do
+        if desc:IsA("Motor6D") and (desc.Name == "Handle" or desc.Name == "RightGrip") then
+            srcHandleMotor = desc
+            break
         end
     end
 
@@ -72,44 +70,50 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             end
         elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0
         elseif d:IsA("Motor6D") and srcToolMotors[d.Name] then
-            table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = false })
+            table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = isMirrored })
         end
     end
     clonedTool.Parent = clone
 
-    local targetPart = (origPart1Name and clonedTool:FindFirstChild(origPart1Name, true))
-        or clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
+    local targetPart = clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
     if not targetPart then return end
 
     for _, j in ipairs(targetPart:GetChildren()) do
         if (j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("WeldConstraint")) then
-            if not j.Part0 or not j.Part0:IsDescendantOf(clonedTool) or not j.Part1 or not j.Part1:IsDescendantOf(clonedTool) then j:Destroy() end
+            if not j.Part0 or not j.Part0:IsDescendantOf(clonedTool) or not j.Part1 or not j.Part1:IsDescendantOf(clonedTool) then
+                j:Destroy()
+            end
         end
     end
 
-    -- Вешаем предмет в правую руку с точным сохранением оригинальных C0 и C1 (без выворачивания)
     local newJoint = Instance.new("Motor6D")
-    if origJoint then
-        newJoint.Name = origJoint.Name
-        if origJoint.Part0 == sourceHand then newJoint.Part0, newJoint.Part1 = targetHand, targetPart
-        else newJoint.Part0, newJoint.Part1 = targetPart, targetHand end
-        newJoint.C0, newJoint.C1 = origJoint.C0, origJoint.C1
-        if origJoint:IsA("Motor6D") then
-            table.insert(cachedToolSyncs, { dst = newJoint, src = origJoint, mirror = false })
+    if srcHandleMotor then
+        newJoint.Name = "Handle"
+        newJoint.Part0 = targetHand
+        newJoint.Part1 = targetPart
+        local c0 = srcHandleMotor.C0
+        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
+        if typeof(gripOffset) == "Vector3" then
+            c0 = c0 * CFrame.new(gripOffset):Inverse()
         end
+        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(c0) or c0
+        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(srcHandleMotor.C1) or srcHandleMotor.C1
+        table.insert(cachedToolSyncs, { dst = newJoint, src = srcHandleMotor, mirror = isMirrored })
     else
-        newJoint.Name, newJoint.Part0, newJoint.Part1 = "RightGrip", targetHand, targetPart
-        newJoint.C0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-        newJoint.C1 = clonedTool.Grip
+        newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", targetHand, targetPart
+        local baseC0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(baseC0) or baseC0
+        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(clonedTool.Grip) or clonedTool.Grip
     end
     newJoint.Parent = targetHand
 end
 
-function RigLib.PlayToolTrack(clone, tracks)
+function RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
     if tracks.tool then
         pcall(function() tracks.tool:Stop(0.1) end)
         tracks.tool = nil
     end
+    if skipToolTrack then return end
 
     local humanoid = clone and clone:FindFirstChildOfClass("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
@@ -172,12 +176,11 @@ function RigLib.SetupAnimations(clone, sourceChar)
         tracks.walk.Looped, tracks.walk.Priority = true, Enum.AnimationPriority.Movement
     end
 
-    -- Как в DOORS Movement: запускаем треки сразу с минимальным весом, чтобы цикл ног не сбрасывался
     if tracks.idle then tracks.idle:Play(0.1, 1, 0.75) end
     if tracks.walk then tracks.walk:Play(0.1, 0.001, 0.01) end
     if tracks.sprint then tracks.sprint:Play(0.1, 0.001, 0.01) end
 
-    RigLib.PlayToolTrack(clone, tracks)
+    RigLib.PlayToolTrack(clone, tracks, false)
     return tracks
 end
 

@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.4)
+-- core/MainEngine.lua (Pure Modular Core v0.3.5)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -77,7 +77,6 @@ return function(Import, Config)
         end
     end
 
-    -- Точная логика весов анимации из Movement DOORS (строки 1706-1730): треки не сбрасываются
     local function updateAnim(speed, sprint)
         if isCrouching and tracks.crouch then
             if tracks.walk then tracks.walk:AdjustWeight(0.001) end
@@ -194,8 +193,8 @@ return function(Import, Config)
         Config = Config, Import = Import,
         GetClone = function() return activeClone end,
         GetCFrame = function() return cloneCF end,
-SetCFrame = function(cf)
-cloneCF = cf
+        SetCFrame = function(cf)
+            cloneCF = cf
 local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
 if r then r.CFrame = cf end
 end,
@@ -203,9 +202,9 @@ GetFloorY = getFloorY, UpdateAnimation = updateAnim,
 GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub = s end,
 IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
 IsHeadLookEnabled = function() return headLookOn end,
-AttachTool = function(mirrored)
+AttachTool = function(mirrored, skipTrack)
 RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs)
-RigLib.PlayToolTrack(activeClone, tracks)
+RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
 end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
