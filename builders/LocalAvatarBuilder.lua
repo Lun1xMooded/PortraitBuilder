@@ -1,9 +1,8 @@
 -- builders/LocalAvatarBuilder.lua
--- Автономный билдер твоего аватара с оригинальной текстурой PortraitHead и одеждой
+-- Автономный билдер твоего аватара (R15 + Shirt/Pants + PortraitHead с PBR SurfaceAppearance)
 
-local Players = game:GetService("Players")
 local InsertService = game:GetService("InsertService")
-local LocalPlayer = Players.LocalPlayer
+local ContentProvider = game:GetService("ContentProvider")
 
 local BODY_PARTS = {
     LowerTorso    = { MeshId = "rbxassetid://532220036", Size = Vector3.new(2.0, 0.4, 1.0) },
@@ -40,8 +39,16 @@ local JOINTS = {
     { Name = "LeftAnkle",     Part0 = "LeftLowerLeg",     Part1 = "LeftFoot",      C0 = CFrame.new(0, -0.75, 0),    C1 = CFrame.new(0, 0.05, 0) },
 }
 
-local SKIN_COLOR  = Color3.new(0.639216, 0.635294, 0.647059)
-local TORSO_COLOR = Color3.new(0.431373, 0.600000, 0.792157)
+local SKIN_COLOR  = Color3.new(0.639, 0.635, 0.647)
+local TORSO_COLOR = Color3.new(0.431, 0.600, 0.792)
+
+local function setupNoCollide(part)
+    part.CanCollide = false
+    part.CanTouch = false
+    part.CanQuery = false
+    part.Massless = true
+    pcall(function() part.CollisionGroup = "NoPlayer" end)
+end
 
 local function createMesh(name, meshId, size, color)
     local ok, part = pcall(function()
@@ -53,56 +60,10 @@ local function createMesh(name, meshId, size, color)
     part.Name = name
     part.Size = size
     part.Color = color
-    part.Material = Enum.Material.SmoothPlastic
-    part.CanCollide = false
-    part.CanTouch = false
-    part.CanQuery = false
-    part.Massless = true
+    part.Material = Enum.Material.Plastic
     part.Anchored = false
+    setupNoCollide(part)
     return part
-end
-
-local function copyVisualsFromPlayer(model, head)
-    local char = LocalPlayer and LocalPlayer.Character
-    if not char then return false end
-
-    -- Копируем реальную одежду (Shirt/Pants) и BodyColors прямо с твоего персонажа в игре (уже предзагруженные!)
-    local srcBC = char:FindFirstChildOfClass("BodyColors")
-    if srcBC then srcBC:Clone().Parent = model end
-
-    local srcShirt = char:FindFirstChildOfClass("Shirt")
-    if srcShirt then srcShirt:Clone().Parent = model end
-
-    local srcPants = char:FindFirstChildOfClass("Pants")
-    if srcPants then srcPants:Clone().Parent = model end
-
-    -- Копируем все аксессуары (включая PortraitHead со всеми SurfaceAppearance/TextureID)
-    for _, acc in ipairs(char:GetChildren()) do
-        if acc:IsA("Accessory") then
-            acc.Archivable = true
-            local cloneAcc = acc:Clone()
-            acc.Archivable = false
-            if cloneAcc then
-                local h = cloneAcc:FindFirstChild("Handle")
-                if h and h:IsA("BasePart") then
-                    h.CanCollide = false
-                    h.CanTouch = false
-                    h.CanQuery = false
-                    h.Massless = true
-                    h.Anchored = false
-                    h.LocalTransparencyModifier = 0
-                    for _, w in ipairs(h:GetChildren()) do
-                        if w:IsA("Weld") or w:IsA("Motor6D") then
-                            w.Part0 = head
-                            w.Part1 = h
-                        end
-                    end
-                end
-                cloneAcc.Parent = model
-            end
-        end
-    end
-    return true
 end
 
 local function buildLocalAvatar()
@@ -113,10 +74,8 @@ local function buildLocalAvatar()
     hrp.Name = "HumanoidRootPart"
     hrp.Size = Vector3.new(2, 2, 1)
     hrp.Transparency = 1
-    hrp.CanCollide = false
-    hrp.CanTouch = false
-    hrp.CanQuery = false
     hrp.Anchored = true
+    setupNoCollide(hrp)
     hrp.Parent = model
     model.PrimaryPart = hrp
 
@@ -124,12 +83,9 @@ local function buildLocalAvatar()
     head.Name = "Head"
     head.Size = Vector3.new(2, 1, 1)
     head.Color = SKIN_COLOR
-    head.Material = Enum.Material.SmoothPlastic
-    head.CanCollide = false
-    head.CanTouch = false
-    head.CanQuery = false
-    head.Massless = true
+    head.Material = Enum.Material.Plastic
     head.Anchored = false
+    setupNoCollide(head)
     head.Parent = model
 
     local headMesh = Instance.new("SpecialMesh")
@@ -159,19 +115,55 @@ local function buildLocalAvatar()
         end
     end
 
+    -- BodyColors + Shirt & Pants с точными ID из дампа Studio
+    local bc = Instance.new("BodyColors")
+    bc.HeadColor3 = SKIN_COLOR
+    bc.LeftArmColor3 = SKIN_COLOR
+    bc.RightArmColor3 = SKIN_COLOR
+    bc.TorsoColor3 = TORSO_COLOR
+    bc.LeftLegColor3 = TORSO_COLOR
+    bc.RightLegColor3 = TORSO_COLOR
+    bc.Parent = model
+
+    local shirt = Instance.new("Shirt")
+    shirt.Name = "Shirt"
+    shirt.ShirtTemplate = "http://www.roblox.com/asset/?id=129095962205532"
+    shirt.Parent = model
+
+    local pants = Instance.new("Pants")
+    pants.Name = "Pants"
+    pants.PantsTemplate = "http://www.roblox.com/asset/?id=134295663430313"
+    pants.Parent = model
+
+    -- Аксессуар PortraitHead с точным PBR SurfaceAppearance (ColorMap + NormalMap + RoughnessMap)
+    local accHead = createMesh("PortraitHeadHandle", "rbxassetid://81338776849113", Vector3.new(1.324, 1.372, 1.360), SKIN_COLOR)
+    local sa = Instance.new("SurfaceAppearance")
+    sa.ColorMap     = "rbxassetid://99378081396301"
+    sa.NormalMap    = "rbxassetid://120313761509116"
+    sa.RoughnessMap = "rbxassetid://139352842351623"
+    sa.Parent = accHead
+    accHead.Parent = model
+
+    local headWeld = Instance.new("Weld")
+    headWeld.Name = "PortraitHeadWeld"
+    headWeld.Part0 = head
+    headWeld.Part1 = accHead
+    headWeld.C0 = CFrame.new(0, 0.05, 0)
+    headWeld.Parent = accHead
+
+    -- R15 Humanoid нужен для рендера Shirt и Pants на MeshPart'ах
     local hum = Instance.new("Humanoid")
+    hum.RigType = Enum.HumanoidRigType.R15
     hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
     hum.HipHeight = 2.0
     hum.EvaluateStateMachine = false
     hum.Parent = model
 
-    -- Переносим уже загруженную в память текстуру одежды и головы PortraitHead с твоего персонажа
-    if not copyVisualsFromPlayer(model, head) then
-        local shirt = Instance.new("Shirt", model)
-        shirt.ShirtTemplate = "rbxassetid://129095962205532"
-        local pants = Instance.new("Pants", model)
-        pants.PantsTemplate = "rbxassetid://134295663430313"
-    end
+    task.spawn(function()
+        pcall(function()
+            ContentProvider:PreloadAsync({ shirt, pants, sa })
+        end)
+    end)
 
     return model
 end

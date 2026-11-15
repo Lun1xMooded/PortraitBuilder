@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.5 — Multi-Clone [U] + LocalAvatar + Custom GitHub Rigs)
+-- core/MainEngine.lua (Pure Modular Core v0.5.1 — No-Collide Fix + Multi-Clone)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -31,17 +31,15 @@ return function(Import, Config)
     end
 
     local ACTOR_LIST = Registry.ActorList or {
-        { Id = "PortraitLight", Label = "Portrait Белый", Type = "Portrait", Variant = "PortraitLight" },
-        { Id = "PortraitDark",  Label = "Portrait Чёрный", Type = "Portrait", Variant = "PortraitDark" },
-        { Id = "LocalAvatar",   Label = "Мой аватар",      Type = "Local" },
-        { Id = "FriendAvatar",  Label = "Клон друга",      Type = "Friend" },
+        { Id = "PortraitLight", Label = "Portrait Белый", Type = "Portrait",      Variant = "PortraitLight" },
+        { Id = "PortraitDark",  Label = "Portrait Чёрный", Type = "Portrait",      Variant = "PortraitDark" },
+        { Id = "LocalAvatar",   Label = "Мой аватар",      Type = "CustomBuilder", Path = "builders/LocalAvatarBuilder.lua" },
     }
 
     local modeIdx = 1
     local multiCloneMode = false
     local isSprint, isCrouching, jitterOn, headLookOn, faceCam = false, false, false, false, false
 
-    -- Список всех активных клонов (для синхронного HeadLook [K], Jitter [Y] и массового удаления [V])
     local allClones = {}
     local activeClone, cloneCF, activeMode, activeSub = nil, nil, nil, nil
     local tracks = {}
@@ -176,34 +174,12 @@ return function(Import, Config)
         ENV.ActiveActorClone = nil
     end
 
-    local function buildAvatarClone(sourceChar, labelName)
-        if not sourceChar then return nil end
-        sourceChar.Archivable = true
-        local clone = sourceChar:Clone()
-        sourceChar.Archivable = false
-        if not clone then return nil end
-        clone.Name = labelName .. "_MemeClone"
-        for _, d in ipairs(clone:GetDescendants()) do
-            if d:IsA("LocalScript") or d:IsA("Script") or d:IsA("Animator") then
-                d:Destroy()
-            elseif d:IsA("BasePart") then
-                d.CanCollide, d.Massless = false, true
-                d.Anchored = (d.Name == "HumanoidRootPart" or d.Name == "CollisionPart")
-                d.LocalTransparencyModifier = 0
-            elseif d:IsA("Decal") then
-                d.LocalTransparencyModifier = 0
-            end
-        end
-        return clone
-    end
-
     local function spawnClone(dist, preserve, customCF)
         local sCF = customCF or (preserve and cloneCF or nil)
         local sMode = preserve and activeMode or nil
         local sSub = preserve and activeSub or nil
         local sCrouch = preserve and isCrouching or false
 
-        -- Если режим толпы [U] выключен — удаляем старых клонов, как обычно
         if not multiCloneMode then
             removeAllClones()
         elseif activeMode and activeMode.OnDeactivate then
@@ -215,44 +191,44 @@ return function(Import, Config)
         local srcChar = LocalPlayer.Character
         local clone = nil
 
-        if actorInfo.Type == "Local" then
-            clone = buildAvatarClone(LocalPlayer.Character, LocalPlayer.Name)
-        elseif actorInfo.Type == "Friend" then
-            local target = RigLib.GetTargetPlayer(Config.TargetPlayerName)
-            srcChar = (target and target.Character) or LocalPlayer.Character
-            clone = buildAvatarClone(srcChar, target and target.Name or LocalPlayer.Name)
-elseif actorInfo.Type == "CustomBuilder" and actorInfo.Path then
-local builderFn = CustomBuildersCache[actorInfo.Path] or Import(actorInfo.Path)
-if type(builderFn) == "function" then
-CustomBuildersCache[actorInfo.Path] = builderFn
-clone = builderFn(actorInfo.Variant)
-end
-else
-if not BuildPortraitRig then return end
-clone = BuildPortraitRig(actorInfo.Variant or "PortraitLight")
-end
-if not clone then
-warn("[MemeActor] Не удалось создать облик:", actorInfo.Label)
-return
-end
-clone.Parent = workspace
-activeClone, ENV.ActiveActorClone = clone, clone
-local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
-local neckMotor = nil
-for _, d in ipairs(clone:GetDescendants()) do
-if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
-neckMotor = d
-break
-end
-end
-local isPortraitType = (actorInfo.Type == "Portrait" or actorInfo.Type == "CustomBuilder")
-RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
-local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-rootOffset = isPortraitType and 3.65 or 3.55
-if sCF then
-local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
-cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
-else
+        if actorInfo.Type == "CustomBuilder" and actorInfo.Path then
+            local builderFn = CustomBuildersCache[actorInfo.Path] or Import(actorInfo.Path)
+            if type(builderFn) == "function" then
+                CustomBuildersCache[actorInfo.Path] = builderFn
+                clone = builderFn(actorInfo.Variant)
+            end
+        else
+            if not BuildPortraitRig then return end
+            clone = BuildPortraitRig(actorInfo.Variant or "PortraitLight")
+        end
+
+        if not clone then
+            warn("[MemeActor] Не удалось создать облик:", actorInfo.Label)
+            return
+        end
+
+        clone.Parent = workspace
+        activeClone, ENV.ActiveActorClone = clone, clone
+
+        local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
+        local neckMotor = nil
+        for _, d in ipairs(clone:GetDescendants()) do
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
+                neckMotor = d
+                break
+            end
+        end
+
+        local isPortraitType = (actorInfo.Type == "Portrait")
+        RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
+
+        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+        rootOffset = isPortraitType and 3.65 or 3.55
+
+        if sCF then
+            local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
+            cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
+        else
 local cam = workspace.CurrentCamera
 local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
 flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
@@ -303,7 +279,7 @@ IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
 IsHeadLookEnabled = function() return headLookOn end,
 AttachTool = function(mirrored, skipTrack)
 local curInfo = ACTOR_LIST[modeIdx]
-local isPort = curInfo and (curInfo.Type == "Portrait" or curInfo.Type == "CustomBuilder")
+local isPort = curInfo and (curInfo.Type == "Portrait")
 RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs)
 RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
 updateToolDrivers()
@@ -339,7 +315,6 @@ modeIdx = (modeIdx % #ACTOR_LIST) + 1
 if not onlyPortraits or ACTOR_LIST[modeIdx].Type == "Portrait" then break end
 end
 print("[MemeActor] Выбран облик:", ACTOR_LIST[modeIdx].Label)
--- В режиме толпы [U] смена облика [G] просто переключает выбор для следующего спавна, не заменяя уже стоящих!
 if activeClone and not multiCloneMode then
 spawnClone(Config.SpawnDistanceFar, true)
 end
@@ -400,6 +375,16 @@ if headLookOn then
 for _, entry in ipairs(allClones) do
 if entry.model and entry.model.Parent then
 solveHeadLookForEntry(entry, dt)
+end
+end
+end
+-- Принудительно отключаем коллизию у всех частей клона каждый кадр, чтобы не застревать при нажатии [P]
+for _, entry in ipairs(allClones) do
+if entry.model then
+for _, part in ipairs(entry.model:GetDescendants()) do
+if part:IsA("BasePart") and part.CanCollide then
+part.CanCollide = false
+end
 end
 end
 end
