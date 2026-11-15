@@ -1,5 +1,5 @@
 -- modes/MirrorMode.lua
--- Режим Зеркала [R]: наклоны корпуса + пост-анимационная рука + дебаг принты
+-- Режим Зеркала [R]: поддержка AnimationConstraint для руки, наклоны корпуса и плавная ходьба
 
 return function(API)
     local Players = game:GetService("Players")
@@ -16,7 +16,6 @@ return function(API)
     local smoothedSpeed = 0
     local smoothStrafeX = 0
     local armMirrorPairs = {}
-    local lastDebugTick = 0
 
     local ARM_SWAP = {
         LeftShoulder = "RightShoulder",
@@ -28,19 +27,16 @@ return function(API)
         table.clear(armMirrorPairs)
         local myChar = LocalPlayer.Character
         local clone = API.GetClone()
-        if not myChar or not clone then
-            warn("[MirrorDebug] rebuildArmMirror: нет myChar или clone!")
-            return
-        end
+        if not myChar or not clone then return end
 
         local srcMap = {}
         for _, d in ipairs(myChar:GetDescendants()) do
-            if d:IsA("Motor6D") and not d:FindFirstAncestorOfClass("Tool") then
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and not d:FindFirstAncestorOfClass("Tool") then
                 srcMap[d.Name] = d
             end
         end
         for _, d in ipairs(clone:GetDescendants()) do
-            if d:IsA("Motor6D") and ARM_SWAP[d.Name] then
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and ARM_SWAP[d.Name] then
                 local srcJoint = srcMap[ARM_SWAP[d.Name]]
                 if srcJoint then
                     table.insert(armMirrorPairs, {
@@ -48,12 +44,10 @@ return function(API)
                         dst = d,
                         src = srcJoint
                     })
-                else
-                    warn("[MirrorDebug] Не найден сустав у игрока:", ARM_SWAP[d.Name])
                 end
             end
         end
-        print("[MirrorDebug] Найдено пар суставов руки:", #armMirrorPairs)
+        print("[MirrorMode] Суставов руки привязано:", #armMirrorPairs)
     end
 
     return {
@@ -74,14 +68,12 @@ return function(API)
 
             API.AttachTool(true, true)
             lastToolName = (myChar and myChar:FindFirstChildOfClass("Tool") and myChar:FindFirstChildOfClass("Tool").Name) or ""
-            print("[MirrorDebug] Активация MirrorMode! Предмет в руках:", lastToolName ~= "" and lastToolName or "ПУСТО")
             rebuildArmMirror()
 
             lastClonePos = cloneCF and cloneCF.Position or nil
             smoothedSpeed = 0
             smoothStrafeX = 0
             stepAccum = 0
-            lastDebugTick = os.clock()
         end,
 
         OnDeactivate = function()
@@ -91,7 +83,6 @@ return function(API)
             API.SetCrouch(false)
             API.UpdateAnimation(0, false)
             API.AttachTool(false, false)
-            print("[MirrorDebug] MirrorMode выключен.")
         end,
 
         OnStep = function(dt, cloneCFrame, root, myRoot)
@@ -139,7 +130,6 @@ return function(API)
             local curName = curTool and curTool.Name or ""
             if curName ~= lastToolName then
                 lastToolName = curName
-                print("[MirrorDebug] Смена предмета ->", lastToolName ~= "" and lastToolName or "УБРАН")
                 API.AttachTool(true, true)
                 rebuildArmMirror()
             end
@@ -161,25 +151,13 @@ return function(API)
                 end
             end
 
-            -- 2. Зеркалим правую руку игрока в левую руку клона
+            -- 2. Зеркалим правую руку игрока (AnimationConstraint) в левую руку клона (Motor6D)
             if lastToolName ~= "" then
                 for _, pair in ipairs(armMirrorPairs) do
                     if pair.dst.Parent and pair.src.Parent then
                         pair.dst.Transform = MirrorLib.MirrorTransform(pair.src.Transform)
                     end
                 end
-            end
-
-            -- 3. Дебаг-принт раз в 2 секунды
-            if os.clock() - lastDebugTick >= 2 then
-                lastDebugTick = os.clock()
-                local pInfo = "нет пар"
-                local firstPair = armMirrorPairs[1]
-                if firstPair then
-                    local rx, ry, rz = firstPair.src.Transform:ToEulerAnglesXYZ()
-                    pInfo = string.format("%s src=(%.1f, %.1f, %.1f)", firstPair.name, math.deg(rx), math.deg(ry), math.deg(rz))
-                end
-                print(string.format("[MirrorDebug] Tool='%s' | Pairs=%d | %s | Strafe=%.2f", lastToolName, #armMirrorPairs, pInfo, smoothStrafeX))
             end
         end
     }

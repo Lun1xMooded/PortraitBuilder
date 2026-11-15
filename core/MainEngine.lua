@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.8 — Clean Reload + Heartbeat)
+-- core/MainEngine.lua (Pure Modular Core v0.3.9 — AnimationConstraint + Stepped Sync)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -6,7 +6,6 @@ return function(Import, Config)
     local LocalPlayer = Players.LocalPlayer
     local ENV = getgenv()
 
-    -- Останавливаем предыдущую запущенную версию, чтобы при перезапуске не было конфликтов
     if ENV.StopMemeActor then
         pcall(ENV.StopMemeActor)
     end
@@ -169,7 +168,12 @@ return function(Import, Config)
         clone.Parent = workspace
         activeClone, ENV.ActiveActorClone = clone, clone
         cachedHead = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
-        for _, d in ipairs(clone:GetDescendants()) do if d:IsA("Motor6D") and d.Name == "Neck" then cachedNeck = d break end end
+        for _, d in ipairs(clone:GetDescendants()) do
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
+                cachedNeck = d
+                break
+            end
+        end
         cachedJitter = EffectsLib.CacheJitterParts(clone)
         RigLib.AttachTool(clone, false, modeName ~= "Player", MirrorLib, cachedToolSyncs)
 
@@ -262,7 +266,8 @@ local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
 end)
-local hbConn = RunService.Heartbeat:Connect(function(dt)
+-- Stepped срабатывает строго после расчёта анимаций: наклоны, рука и HeadLook работают стабильно
+local steppedConn = RunService.Stepped:Connect(function(_, dt)
 if not activeClone then return end
 if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 for _, s in ipairs(cachedToolSyncs) do
@@ -277,7 +282,7 @@ ENV.GardenVisibilityPatch = nil
 removeClone()
 if inputConn then inputConn:Disconnect() end
 if renderConn then renderConn:Disconnect() end
-if hbConn then hbConn:Disconnect() end
+if steppedConn then steppedConn:Disconnect() end
 end
 Registry.PrintStartupBanner(Config)
 end

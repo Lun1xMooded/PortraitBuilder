@@ -10,12 +10,15 @@ MirrorLib.JOINT_SWAP = {
     LeftAnkle = "RightAnkle",       RightAnkle = "LeftAnkle",
 }
 
+function MirrorLib.IsJoint(inst)
+    return inst:IsA("Motor6D") or inst:IsA("AnimationConstraint")
+end
+
 function MirrorLib.MirrorTransform(cf)
     local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
     return CFrame.new(-x, y, z, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
 end
 
--- Оригинальная формула reflect из PortraitShared
 function MirrorLib.ReflectCFrame(planeCF, targetCF)
     local normal = planeCF.LookVector
     local offset = targetCF.Position - planeCF.Position
@@ -35,13 +38,13 @@ function MirrorLib.BuildJointCache(srcChar, dstModel)
 
     local srcMotors = {}
     for _, desc in ipairs(srcChar:GetDescendants()) do
-        if desc:IsA("Motor6D") and not desc:FindFirstAncestorOfClass("Tool") then
+        if MirrorLib.IsJoint(desc) and not desc:FindFirstAncestorOfClass("Tool") then
             srcMotors[desc.Name] = desc
         end
     end
 
     for _, desc in ipairs(dstModel:GetDescendants()) do
-        if desc:IsA("Motor6D") and not desc:FindFirstAncestorOfClass("Tool") and desc.Name ~= "LeftGrip" and desc.Name ~= "RightGrip" then
+        if MirrorLib.IsJoint(desc) and not desc:FindFirstAncestorOfClass("Tool") and desc.Name ~= "LeftGrip" and desc.Name ~= "RightGrip" then
             local swapped = MirrorLib.JOINT_SWAP[desc.Name]
             local src = (swapped and srcMotors[swapped]) or srcMotors[desc.Name]
             if src then
