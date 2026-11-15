@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.3)
+-- core/MainEngine.lua (Pure Modular Core v0.3.4)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -71,36 +71,44 @@ return function(Import, Config)
         isCrouching = state
         if not tracks.crouch then return end
         if isCrouching then
-            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
-            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
             if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
         elseif tracks.crouch.IsPlaying then
             tracks.crouch:Stop(0.2)
         end
     end
 
+    -- Точная логика весов анимации из Movement DOORS (строки 1706-1730): треки не сбрасываются
     local function updateAnim(speed, sprint)
         if isCrouching and tracks.crouch then
-            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.1) end
-            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.1) end
+            if tracks.walk then tracks.walk:AdjustWeight(0.001) end
+            if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
             if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
-            tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 12, 0.45, 1.3) or 0)
+            tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 15, 0.35, 1.3) or 0)
             return
         end
+
         if not tracks.walk then return end
-        if speed > 0.6 then
+        if not tracks.walk.IsPlaying then tracks.walk:Play(0.1, 0.001, 0.01) end
+        if tracks.sprint and not tracks.sprint.IsPlaying then tracks.sprint:Play(0.1, 0.001, 0.01) end
+
+        if speed > 0.5 then
+            local moveWeight = math.clamp(speed / Config.WalkSpeed, 0.05, 1)
             if sprint and tracks.sprint then
-                if tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
-                if not tracks.sprint.IsPlaying then tracks.sprint:Play(0.15, 1, 1) end
-                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.7, 1.4))
+                tracks.walk:AdjustWeight(0.001)
+                tracks.sprint:AdjustWeight(moveWeight)
+                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.65, 1.4))
             else
-                if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
-                if not tracks.walk.IsPlaying then tracks.walk:Play(0.15, 1, 1) end
-                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.6, 1.35))
+                if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
+                tracks.walk:AdjustWeight(moveWeight)
+                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.55, 1.35))
             end
         else
-            if tracks.walk.IsPlaying then tracks.walk:Stop(0.18) end
-            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.18) end
+            tracks.walk:AdjustWeight(0.001)
+            tracks.walk:AdjustSpeed(0.01)
+            if tracks.sprint then
+                tracks.sprint:AdjustWeight(0.001)
+                tracks.sprint:AdjustSpeed(0.01)
+            end
         end
     end
 
@@ -186,8 +194,8 @@ return function(Import, Config)
         Config = Config, Import = Import,
         GetClone = function() return activeClone end,
         GetCFrame = function() return cloneCF end,
-        SetCFrame = function(cf)
-            cloneCF = cf
+SetCFrame = function(cf)
+cloneCF = cf
 local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
 if r then r.CFrame = cf end
 end,

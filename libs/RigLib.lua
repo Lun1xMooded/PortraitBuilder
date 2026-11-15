@@ -87,6 +87,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
         end
     end
 
+    -- Вешаем предмет в правую руку с точным сохранением оригинальных C0 и C1 (без выворачивания)
     local newJoint = Instance.new("Motor6D")
     if origJoint then
         newJoint.Name = origJoint.Name
@@ -132,7 +133,6 @@ function RigLib.PlayToolTrack(clone, tracks)
 
     local tr = animator:LoadAnimation(chosen)
     tr.Looped = true
-    -- Action4 перекрывает Idle/Forward/Crouch и заставляет руку подняться вместе с предметом
     tr.Priority = Enum.AnimationPriority.Action4
     tr:Play(0.1)
     tracks.tool = tr
@@ -172,9 +172,12 @@ function RigLib.SetupAnimations(clone, sourceChar)
         tracks.walk.Looped, tracks.walk.Priority = true, Enum.AnimationPriority.Movement
     end
 
-    if tracks.idle then tracks.idle:Play(0.1) end
-    RigLib.PlayToolTrack(clone, tracks)
+    -- Как в DOORS Movement: запускаем треки сразу с минимальным весом, чтобы цикл ног не сбрасывался
+    if tracks.idle then tracks.idle:Play(0.1, 1, 0.75) end
+    if tracks.walk then tracks.walk:Play(0.1, 0.001, 0.01) end
+    if tracks.sprint then tracks.sprint:Play(0.1, 0.001, 0.01) end
 
+    RigLib.PlayToolTrack(clone, tracks)
     return tracks
 end
 
