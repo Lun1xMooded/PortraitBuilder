@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3)
+-- core/MainEngine.lua (Pure Modular Core v0.3.1)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -188,12 +188,13 @@ return function(Import, Config)
         GetCFrame = function() return cloneCF end,
         SetCFrame = function(cf)
             cloneCF = cf
-            local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
+local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
 if r then r.CFrame = cf end
 end,
 GetFloorY = getFloorY, UpdateAnimation = updateAnim,
 GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub = s end,
-IsCrouching = function() return isCrouching end, IsHeadLookEnabled = function() return headLookOn end,
+IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
+IsHeadLookEnabled = function() return headLookOn end,
 AttachTool = function(mirrored) RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs) end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
