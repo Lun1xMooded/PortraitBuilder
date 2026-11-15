@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.5.1 — No-Collide Fix + Multi-Clone)
+-- core/MainEngine.lua (Pure Modular Core v0.7 — BoxingGloves Punch [O] + CombatLib)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -15,8 +15,9 @@ return function(Import, Config)
     local MirrorLib  = Import("libs/MirrorLib.lua")
     local EffectsLib = Import("libs/EffectsLib.lua")
     local RigLib     = Import("libs/RigLib.lua")
-    if not Registry or not MirrorLib or not EffectsLib or not RigLib then
-        warn("[MemeActor] Не удалось загрузить библиотеки!")
+    local CombatLib  = Import("libs/CombatLib.lua")
+    if not Registry or not MirrorLib or not EffectsLib or not RigLib or not CombatLib then
+        warn("[MemeActor] Не удалось загрузить библиотеки из core/ или libs/!")
         return
     end
 
@@ -37,6 +38,7 @@ return function(Import, Config)
     }
 
     local modeIdx = 1
+    local comboIdx = 1
     local multiCloneMode = false
     local isSprint, isCrouching, jitterOn, headLookOn, faceCam = false, false, false, false, false
 
@@ -226,9 +228,9 @@ return function(Import, Config)
         rootOffset = isPortraitType and 3.65 or 3.55
 
         if sCF then
-            local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
-            cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
-        else
+local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
+cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
+else
 local cam = workspace.CurrentCamera
 local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
 flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
@@ -336,6 +338,16 @@ print("[MemeActor] HeadLook 360°:", headLookOn and "ВКЛ" or "ВЫКЛ")
 elseif key == K.Rotate then
 faceCam = not faceCam
 if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
+elseif key == K.PunchAction and activeClone then
+-- Если на клоне ещё нет BoxingGloves, а ты держишь их в руках — надеваем на клона автоматически
+local cloneTool = activeClone:FindFirstChildOfClass("Tool")
+local myTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+if (not cloneTool or cloneTool.Name ~= "BoxingGloves") and myTool and myTool.Name == "BoxingGloves" then
+ModeAPI.AttachTool(false, false)
+task.wait(0.15)
+end
+comboIdx = CombatLib.PlayCloneSwing(activeClone, comboIdx)
+print("[MemeActor] Удар BoxingGloves!")
 elseif key == K.Remove then
 removeAllClones()
 print("[MemeActor] Все клоны удалены.")
@@ -378,7 +390,6 @@ solveHeadLookForEntry(entry, dt)
 end
 end
 end
--- Принудительно отключаем коллизию у всех частей клона каждый кадр, чтобы не застревать при нажатии [P]
 for _, entry in ipairs(allClones) do
 if entry.model then
 for _, part in ipairs(entry.model:GetDescendants()) do

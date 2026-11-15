@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.6"
+local VERSION = "0.7"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -28,12 +28,13 @@ local DEFAULT_CONFIG = {
         PaceToggle = "L",
         CrouchToggle = "T",
         Chase = "N",
-        HardcoreChase = "Q", -- Свободная клавиша для хардкорных догонялок
+        HardcoreChase = "Q",
         Statue = "H",
         Mirror = "R",
         JitterToggle = "Y",
         HeadLook = "K",
         Rotate = "B",
+        PunchAction = "O", -- Ручной удар BoxingGloves у клона
         Remove = "V",
     }
 }
