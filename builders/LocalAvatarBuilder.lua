@@ -1,7 +1,9 @@
 -- builders/LocalAvatarBuilder.lua
--- Автономный билдер твоего аватара (R15 Block + Shirt/Pants + PortraitHead Accessory)
+-- Автономный билдер твоего аватара с оригинальной текстурой PortraitHead и одеждой
 
+local Players = game:GetService("Players")
 local InsertService = game:GetService("InsertService")
+local LocalPlayer = Players.LocalPlayer
 
 local BODY_PARTS = {
     LowerTorso    = { MeshId = "rbxassetid://532220036", Size = Vector3.new(2.0, 0.4, 1.0) },
@@ -60,6 +62,49 @@ local function createMesh(name, meshId, size, color)
     return part
 end
 
+local function copyVisualsFromPlayer(model, head)
+    local char = LocalPlayer and LocalPlayer.Character
+    if not char then return false end
+
+    -- Копируем реальную одежду (Shirt/Pants) и BodyColors прямо с твоего персонажа в игре (уже предзагруженные!)
+    local srcBC = char:FindFirstChildOfClass("BodyColors")
+    if srcBC then srcBC:Clone().Parent = model end
+
+    local srcShirt = char:FindFirstChildOfClass("Shirt")
+    if srcShirt then srcShirt:Clone().Parent = model end
+
+    local srcPants = char:FindFirstChildOfClass("Pants")
+    if srcPants then srcPants:Clone().Parent = model end
+
+    -- Копируем все аксессуары (включая PortraitHead со всеми SurfaceAppearance/TextureID)
+    for _, acc in ipairs(char:GetChildren()) do
+        if acc:IsA("Accessory") then
+            acc.Archivable = true
+            local cloneAcc = acc:Clone()
+            acc.Archivable = false
+            if cloneAcc then
+                local h = cloneAcc:FindFirstChild("Handle")
+                if h and h:IsA("BasePart") then
+                    h.CanCollide = false
+                    h.CanTouch = false
+                    h.CanQuery = false
+                    h.Massless = true
+                    h.Anchored = false
+                    h.LocalTransparencyModifier = 0
+                    for _, w in ipairs(h:GetChildren()) do
+                        if w:IsA("Weld") or w:IsA("Motor6D") then
+                            w.Part0 = head
+                            w.Part1 = h
+                        end
+                    end
+                end
+                cloneAcc.Parent = model
+            end
+        end
+    end
+    return true
+end
+
 local function buildLocalAvatar()
     local model = Instance.new("Model")
     model.Name = "LocalAvatar_MemeClone"
@@ -92,12 +137,6 @@ local function buildLocalAvatar()
     headMesh.Scale = Vector3.new(1.25, 1.25, 1.25)
     headMesh.Parent = head
 
-    local face = Instance.new("Decal")
-    face.Name = "face"
-    face.Face = Enum.NormalId.Front
-    face.Texture = "rbxasset://textures/face.png"
-    face.Parent = head
-
     local parts = { HumanoidRootPart = hrp, Head = head }
     for partName, info in pairs(BODY_PARTS) do
         local isSkin = partName:find("Arm") or partName:find("Hand")
@@ -120,40 +159,19 @@ local function buildLocalAvatar()
         end
     end
 
-    -- Цвета тела + одежда (Shirt & Pants)
-    local bc = Instance.new("BodyColors")
-    bc.HeadColor3 = SKIN_COLOR
-    bc.LeftArmColor3 = SKIN_COLOR
-    bc.RightArmColor3 = SKIN_COLOR
-    bc.TorsoColor3 = TORSO_COLOR
-    bc.LeftLegColor3 = TORSO_COLOR
-    bc.RightLegColor3 = TORSO_COLOR
-    bc.Parent = model
-
-    local shirt = Instance.new("Shirt")
-    shirt.ShirtTemplate = "rbxassetid://129095962205532"
-    shirt.Parent = model
-
-    local pants = Instance.new("Pants")
-    pants.PantsTemplate = "rbxassetid://134295663430313"
-    pants.Parent = model
-
-    -- Аксессуар головы (PortraitHead)
-    local accHead = createMesh("PortraitHeadHandle", "rbxassetid://81338776849113", Vector3.new(1.324, 1.372, 1.360), SKIN_COLOR)
-    accHead.Parent = model
-
-    local headWeld = Instance.new("Weld")
-    headWeld.Name = "PortraitHeadWeld"
-    headWeld.Part0 = head
-    headWeld.Part1 = accHead
-    headWeld.C0 = CFrame.new(0, 0.05, 0)
-    headWeld.Parent = accHead
-
     local hum = Instance.new("Humanoid")
     hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
     hum.HipHeight = 2.0
     hum.EvaluateStateMachine = false
     hum.Parent = model
+
+    -- Переносим уже загруженную в память текстуру одежды и головы PortraitHead с твоего персонажа
+    if not copyVisualsFromPlayer(model, head) then
+        local shirt = Instance.new("Shirt", model)
+        shirt.ShirtTemplate = "rbxassetid://129095962205532"
+        local pants = Instance.new("Pants", model)
+        pants.PantsTemplate = "rbxassetid://134295663430313"
+    end
 
     return model
 end
