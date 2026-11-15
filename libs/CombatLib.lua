@@ -1,5 +1,5 @@
 -- libs/CombatLib.lua
--- Библиотека анимаций ударов BoxingGloves (swing1 / swing2) и физического рэгдолла с отбрасыванием
+-- Библиотека ударов BoxingGloves (swing1 / swing2), рэгдолл клона и откидывание игрока
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -11,7 +11,6 @@ local SWING_IDS = {
     "rbxassetid://98472295325859",  -- swing2
 }
 
--- Проигрывает удар swing1 / swing2 на клоне (Action4 перекрывает idle перчаток!)
 function CombatLib.PlayCloneSwing(clone, comboIndex)
     if not clone then return 1 end
 
@@ -31,7 +30,29 @@ function CombatLib.PlayCloneSwing(clone, comboIndex)
     return (idx == 1) and 2 or 1
 end
 
--- Включает настоящий рэгдолл (заменяет Motor6D на BallSocketConstraint) и отбрасывает клона назад
+-- Откидывание и временное падение локального игрока без риска кика от RemoteEvent
+function CombatLib.KnockbackPlayer(fromPos, power)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("CollisionPart") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    local dir = (root.Position - fromPos) * Vector3.new(1, 0, 1)
+    dir = (dir.Magnitude > 0.01) and dir.Unit or -root.CFrame.LookVector
+
+    hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+    root.AssemblyLinearVelocity = dir * (power or 48) + Vector3.new(0, 22, 0)
+    root.AssemblyAngularVelocity = Vector3.new(math.random(-5, 5), math.random(-3, 3), math.random(-5, 5))
+
+    task.delay(1.1, function()
+        if hum and hum.Parent and hum.Health > 0 then
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end)
+end
+
 function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
@@ -80,7 +101,7 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
 
     local dir = (knockbackDir * Vector3.new(1, 0, 1))
     dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
-    local impulse = dir * (power or 55) + Vector3.new(0, 24, 0)
+    local impulse = dir * (power or 60) + Vector3.new(0, 26, 0)
 
     root.AssemblyLinearVelocity = impulse
     root.AssemblyAngularVelocity = Vector3.new(math.random(-6, 6), math.random(-4, 4), math.random(-6, 6))
@@ -111,39 +132,38 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     end
 end
 
--- Подписка на удар BoxingGloves локального игрока (работает всегда, даже при смене персонажа)
+-- Отслеживает удар BoxingGloves по запуску анимаций swing1 / swing2 в Animator игрока
 function CombatLib.BindPlayerPunch(onPunchCallback)
-    local activeToolConn = nil
+    local animConn = nil
     local charAddedConn = nil
-    local childAddedConn = nil
-
-    local function hookTool(tool)
-        if activeToolConn then
-            activeToolConn:Disconnect()
-            activeToolConn = nil
-        end
-        if tool and tool:IsA("Tool") and tool.Name == "BoxingGloves" then
-            activeToolConn = tool:GetAttributeChangedSignal("OnCooldown"):Connect(function()
-                if tool:GetAttribute("OnCooldown") == true then
-                    onPunchCallback()
-                end
-            end)
-        end
-    end
+    local lastPunchTick = 0
 
     local function hookChar(char)
-        if childAddedConn then childAddedConn:Disconnect() end
+        if animConn then
+            animConn:Disconnect()
+            animConn = nil
+        end
         if not char then return end
-        hookTool(char:FindFirstChildOfClass("Tool"))
-        childAddedConn = char.ChildAdded:Connect(hookTool)
+        local hum = char:WaitForChild("Humanoid", 5)
+        local animator = hum and hum:WaitForChild("Animator", 5)
+        if not animator then return end
+
+        animConn = animator.AnimationPlayed:Connect(function(track)
+            local id = track.Animation and track.Animation.AnimationId or ""
+            if id:find("122067211304895") or id:find("98472295325859") then
+                if os.clock() - lastPunchTick > 0.25 then
+                    lastPunchTick = os.clock()
+                    onPunchCallback()
+                end
+            end
+        end)
     end
 
     hookChar(LocalPlayer.Character)
     charAddedConn = LocalPlayer.CharacterAdded:Connect(hookChar)
 
     return function()
-        if activeToolConn then activeToolConn:Disconnect() end
-        if childAddedConn then childAddedConn:Disconnect() end
+        if animConn then animConn:Disconnect() end
         if charAddedConn then charAddedConn:Disconnect() end
     end
 end

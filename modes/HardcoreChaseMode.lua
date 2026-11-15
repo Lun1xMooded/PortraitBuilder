@@ -169,6 +169,7 @@ return function(API)
             if dist <= KILL_DISTANCE then
                 -- Если на клоне надеты BoxingGloves, перед смертью проигрывает удар swing1/swing2
                 comboIdx = CombatLib.PlayCloneSwing(API.GetClone(), comboIdx)
+				CombatLib.KnockbackPlayer(cloneCFrame.Position, 55)
                 triggerKill(myChar)
                 return
             end
