@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.5"
+local VERSION = "0.6"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -22,12 +22,13 @@ local DEFAULT_CONFIG = {
     Keys = {
         Spawn = "Z",
         SpawnHere = "P",
-        MultiToggle = "U",  -- Вкл/Выкл режим толпы клонов (для видео "Найди оригинал")
+        MultiToggle = "U",
         SwitchActor = "G",
         StraightMove = "F",
         PaceToggle = "L",
         CrouchToggle = "T",
         Chase = "N",
+        HardcoreChase = "Q", -- Свободная клавиша для хардкорных догонялок
         Statue = "H",
         Mirror = "R",
         JitterToggle = "Y",
