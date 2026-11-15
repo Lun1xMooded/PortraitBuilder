@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.7 — BoxingGloves Punch [O] + CombatLib)
+-- core/MainEngine.lua (Pure Modular Core v0.7.1 — Global BoxingGloves Knockback + Action4 Punch)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -227,7 +227,7 @@ return function(Import, Config)
         local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
         rootOffset = isPortraitType and 3.65 or 3.55
 
-        if sCF then
+if sCF then
 local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
 cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
 else
@@ -248,6 +248,7 @@ neck = neckMotor,
 neckCF = nil,
 jitter = EffectsLib.CacheJitterParts(clone),
 tracks = tracks,
+isRagdoll = false,
 })
 setCrouch(sCrouch)
 if sMode then setMode(sMode, sSub) end
@@ -265,6 +266,37 @@ if myChar:GetAttribute("Crouching") == true then
 setCrouch(true)
 end
 end
+-- Глобальный обработчик твоего удара BoxingGloves по стоящим клонам (когда НЕ включён HardcoreChaseMode)
+local globalPunchDisconnect = CombatLib.BindPlayerPunch(function()
+if activeMode and activeMode.Name == "HardcoreChase" then return end
+local myChar = LocalPlayer.Character
+local myRoot = myChar and (myChar:FindFirstChild("CollisionPart") or myChar.PrimaryPart)
+if not myRoot then return end
+for _, entry in ipairs(allClones) do
+if entry.model and entry.model.Parent and not entry.isRagdoll and entry.cframe then
+local toClone = (entry.cframe.Position - myRoot.Position) * Vector3.new(1, 0, 1)
+if toClone.Magnitude <= 8.5 then
+entry.isRagdoll = true
+print("[MemeActor] Удар перчатками по манекену! Рэгдолл на 2.2 сек.")
+local restoreFn = CombatLib.ApplyRagdoll(entry.model, toClone.Unit, 55)
+task.delay(2.2, function()
+if restoreFn and entry.model and entry.model.Parent then
+local landedCF = restoreFn()
+if landedCF then
+local fy = getFloorY(landedCF.Position, myRoot.Position.Y, true)
+local newCF = CFrame.lookAt(Vector3.new(landedCF.X, fy, landedCF.Z), Vector3.new(myRoot.Position.X, fy, myRoot.Position.Z))
+entry.cframe = newCF
+if entry.model == activeClone then cloneCF = newCF end
+local r = entry.model.PrimaryPart or entry.model:FindFirstChild("HumanoidRootPart")
+if r then r.CFrame = newCF end
+end
+end
+entry.isRagdoll = false
+end)
+end
+end
+end
+end)
 local ModeAPI = {
 Config = Config, Import = Import,
 GetClone = function() return activeClone end,
@@ -339,15 +371,14 @@ elseif key == K.Rotate then
 faceCam = not faceCam
 if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
 elseif key == K.PunchAction and activeClone then
--- Если на клоне ещё нет BoxingGloves, а ты держишь их в руках — надеваем на клона автоматически
 local cloneTool = activeClone:FindFirstChildOfClass("Tool")
 local myTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
 if (not cloneTool or cloneTool.Name ~= "BoxingGloves") and myTool and myTool.Name == "BoxingGloves" then
 ModeAPI.AttachTool(false, false)
-task.wait(0.15)
+task.wait(0.18)
 end
 comboIdx = CombatLib.PlayCloneSwing(activeClone, comboIdx)
-print("[MemeActor] Удар BoxingGloves!")
+print("[MemeActor] Удар BoxingGloves (Action4)!")
 elseif key == K.Remove then
 removeAllClones()
 print("[MemeActor] Все клоны удалены.")
@@ -385,13 +416,13 @@ if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 updateToolDrivers()
 if headLookOn then
 for _, entry in ipairs(allClones) do
-if entry.model and entry.model.Parent then
+if entry.model and entry.model.Parent and not entry.isRagdoll then
 solveHeadLookForEntry(entry, dt)
 end
 end
 end
 for _, entry in ipairs(allClones) do
-if entry.model then
+if entry.model and not entry.isRagdoll then
 for _, part in ipairs(entry.model:GetDescendants()) do
 if part:IsA("BasePart") and part.CanCollide then
 part.CanCollide = false
@@ -402,6 +433,7 @@ end
 end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
+if globalPunchDisconnect then globalPunchDisconnect() end
 removeAllClones()
 if inputConn then inputConn:Disconnect() end
 if renderConn then renderConn:Disconnect() end

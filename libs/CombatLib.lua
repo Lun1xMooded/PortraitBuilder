@@ -11,11 +11,9 @@ local SWING_IDS = {
     "rbxassetid://98472295325859",  -- swing2
 }
 
--- Проигрывает удар swing1 / swing2 на клоне, если на нём надеты BoxingGloves
+-- Проигрывает удар swing1 / swing2 на клоне (Action4 перекрывает idle перчаток!)
 function CombatLib.PlayCloneSwing(clone, comboIndex)
     if not clone then return 1 end
-    local tool = clone:FindFirstChildOfClass("Tool")
-    if not tool or tool.Name ~= "BoxingGloves" then return comboIndex or 1 end
 
     local hum = clone:FindFirstChildOfClass("Humanoid")
     local animator = hum and hum:FindFirstChildOfClass("Animator")
@@ -27,22 +25,21 @@ function CombatLib.PlayCloneSwing(clone, comboIndex)
 
     local track = animator:LoadAnimation(anim)
     track.Looped = false
-    track.Priority = Enum.AnimationPriority.Action3
-    track:Play(0.08, 1, 1.1)
+    track.Priority = Enum.AnimationPriority.Action4
+    track:Play(0.05, 1, 1.15)
 
     return (idx == 1) and 2 or 1
 end
 
 -- Включает настоящий рэгдолл (заменяет Motor6D на BallSocketConstraint) и отбрасывает клона назад
 function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
-    if not clone then return end
+    if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+    if not root then return nil end
 
     local savedMotors = {}
     local tempRagdoll = {}
 
-    -- 1. Превращаем суставы Motor6D в гибкие BallSocketConstraint для реалистичного падения
     for _, desc in ipairs(clone:GetDescendants()) do
         if desc:IsA("Motor6D") and desc.Part0 and desc.Part1 and desc.Name ~= "Handle" and desc.Name ~= "LeftHandle" then
             local a0 = Instance.new("Attachment")
@@ -72,7 +69,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         end
     end
 
-    -- 2. Включаем физику и коллизию конечностей, отключаем якорь на Root
     for _, part in ipairs(clone:GetDescendants()) do
         if part:IsA("BasePart") then
             part.Anchored = false
@@ -82,7 +78,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         end
     end
 
-    -- 3. Задаём импульс отбрасывания назад и вверх
     local dir = (knockbackDir * Vector3.new(1, 0, 1))
     dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
     local impulse = dir * (power or 55) + Vector3.new(0, 24, 0)
@@ -90,7 +85,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     root.AssemblyLinearVelocity = impulse
     root.AssemblyAngularVelocity = Vector3.new(math.random(-6, 6), math.random(-4, 4), math.random(-6, 6))
 
-    -- Возвращает функцию восстановления клона на ноги после рэгдолла
     return function()
         if not clone or not clone.Parent then return nil end
 
@@ -117,12 +111,12 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     end
 end
 
--- Подписка на удар BoxingGloves локального игрока
+-- Подписка на удар BoxingGloves локального игрока (работает всегда, даже при смене персонажа)
 function CombatLib.BindPlayerPunch(onPunchCallback)
-    local char = LocalPlayer.Character
-    if not char then return nil end
-
     local activeToolConn = nil
+    local charAddedConn = nil
+    local childAddedConn = nil
+
     local function hookTool(tool)
         if activeToolConn then
             activeToolConn:Disconnect()
@@ -137,12 +131,20 @@ function CombatLib.BindPlayerPunch(onPunchCallback)
         end
     end
 
-    hookTool(char:FindFirstChildOfClass("Tool"))
-    local childConn = char.ChildAdded:Connect(hookTool)
+    local function hookChar(char)
+        if childAddedConn then childAddedConn:Disconnect() end
+        if not char then return end
+        hookTool(char:FindFirstChildOfClass("Tool"))
+        childAddedConn = char.ChildAdded:Connect(hookTool)
+    end
+
+    hookChar(LocalPlayer.Character)
+    charAddedConn = LocalPlayer.CharacterAdded:Connect(hookChar)
 
     return function()
         if activeToolConn then activeToolConn:Disconnect() end
-        if childConn then childConn:Disconnect() end
+        if childAddedConn then childAddedConn:Disconnect() end
+        if charAddedConn then charAddedConn:Disconnect() end
     end
 end
 
