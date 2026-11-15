@@ -2,7 +2,7 @@
 local HttpService = game:GetService("HttpService")
 
 local ConfigManager = {}
-local VERSION = "0.4"
+local VERSION = "0.5"
 local FOLDER_NAME = "MemeActor"
 local FILE_PATH = FOLDER_NAME .. "/config_v" .. VERSION .. ".json"
 
@@ -21,7 +21,8 @@ local DEFAULT_CONFIG = {
     JitterIntensity = 4.0,
     Keys = {
         Spawn = "Z",
-        SpawnHere = "P",    -- Спавн точно на месте игрока с его поворотом
+        SpawnHere = "P",
+        MultiToggle = "U",  -- Вкл/Выкл режим толпы клонов (для видео "Найди оригинал")
         SwitchActor = "G",
         StraightMove = "F",
         PaceToggle = "L",

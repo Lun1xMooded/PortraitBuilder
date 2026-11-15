@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.4.2 — SpawnAtPlayer [P])
+-- core/MainEngine.lua (Pure Modular Core v0.5 — Multi-Clone [U] + LocalAvatar + Custom GitHub Rigs)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -23,31 +23,45 @@ return function(Import, Config)
     local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
     if type(BuildPortraitRig) == "function" then ENV.BuildPortraitRig = BuildPortraitRig end
 
+    local CustomBuildersCache = {}
+
     local function resolveKey(info)
         local k = Config.Keys and Config.Keys[info.ConfigKey]
         return (k and Enum.KeyCode[k]) or info.Fallback
     end
 
-    local ACTOR_MODES = { "PortraitLight", "PortraitDark", "Player" }
-    local ACTOR_LABELS = { PortraitLight = "Portrait Белый", PortraitDark = "Portrait Чёрный", Player = "Клон друга" }
-    local modeIdx, isSprint, isCrouching, jitterOn, headLookOn, faceCam = 1, false, false, false, false, false
+    local ACTOR_LIST = Registry.ActorList or {
+        { Id = "PortraitLight", Label = "Portrait Белый", Type = "Portrait", Variant = "PortraitLight" },
+        { Id = "PortraitDark",  Label = "Portrait Чёрный", Type = "Portrait", Variant = "PortraitDark" },
+        { Id = "LocalAvatar",   Label = "Мой аватар",      Type = "Local" },
+        { Id = "FriendAvatar",  Label = "Клон друга",      Type = "Friend" },
+    }
 
+    local modeIdx = 1
+    local multiCloneMode = false
+    local isSprint, isCrouching, jitterOn, headLookOn, faceCam = false, false, false, false, false
+
+    -- Список всех активных клонов (для синхронного HeadLook [K], Jitter [Y] и массового удаления [V])
+    local allClones = {}
     local activeClone, cloneCF, activeMode, activeSub = nil, nil, nil, nil
     local tracks = {}
-    local cachedNeck, cachedHead, currentNeckCF = nil, nil, nil
-    local cachedJitter, cachedToolSyncs = {}, {}
+    local cachedToolSyncs = {}
     local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
 
     local function getFloorY(pos, refY, force)
-        if not activeClone then return pos.Y end
         if not force and lastFloorPos and cachedFloorY and (Vector3.new(pos.X, 0, pos.Z) - lastFloorPos).Magnitude < 0.25 then
             return cachedFloorY
         end
-        local ignore = { activeClone }
-        for _, p in ipairs(Players:GetPlayers()) do if p.Character then table.insert(ignore, p.Character) end end
+        local ignore = {}
+        for _, entry in ipairs(allClones) do
+            if entry.model then table.insert(ignore, entry.model) end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then table.insert(ignore, p.Character) end
+        end
         rayParams.FilterDescendantsInstances = ignore
         local hit = workspace:Raycast(Vector3.new(pos.X, (refY or pos.Y) + 2, pos.Z), Vector3.new(0, -30, 0), rayParams)
         local fy = hit and (hit.Position.Y + rootOffset) or (refY or pos.Y)
@@ -55,19 +69,20 @@ return function(Import, Config)
         return fy
     end
 
-    local function solveHeadLook(dt)
-        if not cachedNeck or not cachedNeck.Parent or not cachedHead or not cachedHead.Parent or not cachedNeck.Part0 then return end
-        local baseW = cachedNeck.Part0.CFrame * cachedNeck.C0
-        local headPos = (baseW * cachedNeck.C1:Inverse()).Position
+    local function solveHeadLookForEntry(entry, dt)
+        local neck, head = entry.neck, entry.head
+        if not neck or not neck.Parent or not head or not head.Parent or not neck.Part0 then return end
+        local baseW = neck.Part0.CFrame * neck.C0
+        local headPos = (baseW * neck.C1:Inverse()).Position
         local toTarget = workspace.CurrentCamera.CFrame.Position - headPos
         if toTarget.Magnitude < 0.05 then return end
         local dir, up = toTarget.Unit, baseW.UpVector
         if math.abs(dir:Dot(up)) > 0.995 then up = baseW.RightVector end
         local rx, ry, rz = baseW.Rotation:ToObjectSpace(CFrame.lookAt(Vector3.zero, dir, up)):ToEulerAnglesYXZ()
         rx, rz = math.clamp(rx, math.rad(-65), math.rad(65)), math.clamp(rz, math.rad(-25), math.rad(25))
-        local targetTr = cachedNeck.C1 * CFrame.fromEulerAnglesYXZ(rx, ry, rz) * cachedNeck.C1:Inverse()
-        currentNeckCF = currentNeckCF and currentNeckCF:Lerp(targetTr, math.clamp((dt or 0.016) * 14, 0, 1)) or targetTr
-        cachedNeck.Transform = currentNeckCF
+        local targetTr = neck.C1 * CFrame.fromEulerAnglesYXZ(rx, ry, rz) * neck.C1:Inverse()
+        entry.neckCF = entry.neckCF and entry.neckCF:Lerp(targetTr, math.clamp((dt or 0.016) * 14, 0, 1)) or targetTr
+        neck.Transform = entry.neckCF
     end
 
     local function updateToolDrivers()
@@ -84,11 +99,15 @@ return function(Import, Config)
 
     local function setCrouch(state)
         isCrouching = state
-        if not tracks.crouch then return end
-        if isCrouching then
-            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
-        elseif tracks.crouch.IsPlaying then
-            tracks.crouch:Stop(0.2)
+        for _, entry in ipairs(allClones) do
+            local tr = entry.tracks and entry.tracks.crouch
+            if tr then
+                if isCrouching then
+                    if not tr.IsPlaying then tr:Play(0.2, 1, 0) end
+                elseif tr.IsPlaying then
+                    tr:Stop(0.2)
+                end
+            end
         end
     end
 
@@ -139,16 +158,43 @@ return function(Import, Config)
         print("[MemeActor] Режим:", modeObj.Name, sub or "")
     end
 
-    local function removeClone()
+    local function removeAllClones()
         if activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate() end
         activeMode, activeSub, cloneCF, lastFloorPos, cachedFloorY = nil, nil, nil, nil, nil
-        cachedNeck, cachedHead, currentNeckCF = nil, nil, nil
-        table.clear(cachedJitter)
         table.clear(cachedToolSyncs)
-        for _, t in pairs(tracks) do pcall(function() t:Stop() end) end
+
+        for _, entry in ipairs(allClones) do
+            if entry.tracks then
+                for _, t in pairs(entry.tracks) do pcall(function() t:Stop() end) end
+            end
+            if entry.model then entry.model:Destroy() end
+        end
+        table.clear(allClones)
+
         tracks = {}
-        if activeClone then activeClone:Destroy() activeClone = nil end
+        activeClone = nil
         ENV.ActiveActorClone = nil
+    end
+
+    local function buildAvatarClone(sourceChar, labelName)
+        if not sourceChar then return nil end
+        sourceChar.Archivable = true
+        local clone = sourceChar:Clone()
+        sourceChar.Archivable = false
+        if not clone then return nil end
+        clone.Name = labelName .. "_MemeClone"
+        for _, d in ipairs(clone:GetDescendants()) do
+            if d:IsA("LocalScript") or d:IsA("Script") or d:IsA("Animator") then
+                d:Destroy()
+            elseif d:IsA("BasePart") then
+                d.CanCollide, d.Massless = false, true
+                d.Anchored = (d.Name == "HumanoidRootPart" or d.Name == "CollisionPart")
+                d.LocalTransparencyModifier = 0
+            elseif d:IsA("Decal") then
+                d.LocalTransparencyModifier = 0
+            end
+        end
+        return clone
     end
 
     local function spawnClone(dist, preserve, customCF)
@@ -157,62 +203,77 @@ return function(Import, Config)
         local sSub = preserve and activeSub or nil
         local sCrouch = preserve and isCrouching or false
 
-        removeClone()
-        local modeName = ACTOR_MODES[modeIdx]
-        local target = RigLib.GetTargetPlayer(Config.TargetPlayerName)
-        local srcChar = (target and target.Character) or LocalPlayer.Character
+        -- Если режим толпы [U] выключен — удаляем старых клонов, как обычно
+        if not multiCloneMode then
+            removeAllClones()
+        elseif activeMode and activeMode.OnDeactivate then
+            activeMode.OnDeactivate()
+            activeMode, activeSub = nil, nil
+        end
 
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
+        local srcChar = LocalPlayer.Character
         local clone = nil
-        if modeName == "Player" then
-            if not srcChar then return end
-            srcChar.Archivable = true; clone = srcChar:Clone(); srcChar.Archivable = false
-            if not clone then return end
-            clone.Name = (target and target.Name or LocalPlayer.Name) .. "_MemeClone"
-            for _, d in ipairs(clone:GetDescendants()) do
-                if d:IsA("LocalScript") or d:IsA("Script") or d:IsA("Animator") then d:Destroy()
-                elseif d:IsA("BasePart") then
-                    d.CanCollide, d.Massless = false, true
-                    d.Anchored = (d.Name == "HumanoidRootPart" or d.Name == "CollisionPart")
-                    d.LocalTransparencyModifier = 0
-                elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0 end
-            end
-        else
-            if not BuildPortraitRig then return end
-            clone = BuildPortraitRig(modeName)
-        end
 
-        clone.Parent = workspace
-        activeClone, ENV.ActiveActorClone = clone, clone
-        cachedHead = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
-        for _, d in ipairs(clone:GetDescendants()) do
-            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
-                cachedNeck = d
-                break
-            end
-        end
-        cachedJitter = EffectsLib.CacheJitterParts(clone)
-        RigLib.AttachTool(clone, false, modeName ~= "Player", MirrorLib, cachedToolSyncs)
-
-        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-        rootOffset = (modeName == "Player") and 3.55 or 3.65
-
-        if sCF then
-            -- Если передали точную позицию игрока (кнопка [P]), выравниваем по полу
-            local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
-            cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
-        else
-            local cam = workspace.CurrentCamera
-            local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
-            flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
+        if actorInfo.Type == "Local" then
+            clone = buildAvatarClone(LocalPlayer.Character, LocalPlayer.Name)
+        elseif actorInfo.Type == "Friend" then
+            local target = RigLib.GetTargetPlayer(Config.TargetPlayerName)
+            srcChar = (target and target.Character) or LocalPlayer.Character
+            clone = buildAvatarClone(srcChar, target and target.Name or LocalPlayer.Name)
+elseif actorInfo.Type == "CustomBuilder" and actorInfo.Path then
+local builderFn = CustomBuildersCache[actorInfo.Path] or Import(actorInfo.Path)
+if type(builderFn) == "function" then
+CustomBuildersCache[actorInfo.Path] = builderFn
+clone = builderFn(actorInfo.Variant)
+end
+else
+if not BuildPortraitRig then return end
+clone = BuildPortraitRig(actorInfo.Variant or "PortraitLight")
+end
+if not clone then
+warn("[MemeActor] Не удалось создать облик:", actorInfo.Label)
+return
+end
+clone.Parent = workspace
+activeClone, ENV.ActiveActorClone = clone, clone
+local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
+local neckMotor = nil
+for _, d in ipairs(clone:GetDescendants()) do
+if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
+neckMotor = d
+break
+end
+end
+local isPortraitType = (actorInfo.Type == "Portrait" or actorInfo.Type == "CustomBuilder")
+RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
+local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+rootOffset = isPortraitType and 3.65 or 3.55
+if sCF then
+local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
+cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
+else
+local cam = workspace.CurrentCamera
+local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
+flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
 local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
 local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
 cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
 end
 if root then root.CFrame = cloneCF end
 tracks = RigLib.SetupAnimations(clone, srcChar)
+table.insert(allClones, {
+model = clone,
+cframe = cloneCF,
+head = headPart,
+neck = neckMotor,
+neckCF = nil,
+jitter = EffectsLib.CacheJitterParts(clone),
+tracks = tracks,
+})
 setCrouch(sCrouch)
 if sMode then setMode(sMode, sSub) end
-print("[MemeActor] Заспавнен:", ACTOR_LABELS[modeName])
+print(string.format("[MemeActor] Заспавнен: %s (Всего на сцене: %d)", actorInfo.Label, #allClones))
 end
 local function spawnAtPlayer()
 local myChar = LocalPlayer.Character
@@ -232,6 +293,7 @@ GetClone = function() return activeClone end,
 GetCFrame = function() return cloneCF end,
 SetCFrame = function(cf)
 cloneCF = cf
+if #allClones > 0 then allClones[#allClones].cframe = cf end
 local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
 if r then r.CFrame = cf end
 end,
@@ -240,7 +302,9 @@ GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub
 IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
 IsHeadLookEnabled = function() return headLookOn end,
 AttachTool = function(mirrored, skipTrack)
-RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs)
+local curInfo = ACTOR_LIST[modeIdx]
+local isPort = curInfo and (curInfo.Type == "Portrait" or curInfo.Type == "CustomBuilder")
+RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs)
 RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
 updateToolDrivers()
 end,
@@ -261,22 +325,45 @@ end
 local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
 if gp or UserInputService:GetFocusedTextBox() then return end
 local key = inp.KeyCode
-if key == K.Spawn then spawnClone(Config.SpawnDistanceFar, false)
-elseif key == K.SpawnHere then spawnAtPlayer()
+if key == K.Spawn then
+spawnClone(Config.SpawnDistanceFar, false)
+elseif key == K.SpawnHere then
+spawnAtPlayer()
+elseif key == K.MultiToggle then
+multiCloneMode = not multiCloneMode
+print("[MemeActor] Режим толпы клонов [U]:", multiCloneMode and "ВКЛ (клоны не удаляются при новом спавне)" or "ВЫКЛ (одиночный клон)")
 elseif key == K.SwitchActor then
-local onlyP = UserInputService:IsKeyDown(K.Spawn)
-for _ = 1, #ACTOR_MODES do
-modeIdx = (modeIdx % #ACTOR_MODES) + 1
-if not onlyP or ACTOR_MODES[modeIdx] ~= "Player" then break end
+local onlyPortraits = UserInputService:IsKeyDown(K.Spawn)
+for _ = 1, #ACTOR_LIST do
+modeIdx = (modeIdx % #ACTOR_LIST) + 1
+if not onlyPortraits or ACTOR_LIST[modeIdx].Type == "Portrait" then break end
 end
-print("[MemeActor] Облик:", ACTOR_LABELS[ACTOR_MODES[modeIdx]])
-if activeClone then spawnClone(Config.SpawnDistanceFar, true) end
-elseif key == K.PaceToggle then isSprint = not isSprint; print("[MemeActor] Темп:", isSprint and "БЕГ" or "ХОДЬБА")
-elseif key == K.Crouch then if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(not isCrouching)
-elseif key == K.JitterToggle then jitterOn = not jitterOn; if not jitterOn then EffectsLib.ResetJitter(cachedJitter) end
-elseif key == K.HeadLook then headLookOn = not headLookOn; currentNeckCF = nil; print("[MemeActor] HeadLook 360°:", headLookOn and "ВКЛ" or "ВЫКЛ")
-elseif key == K.Rotate then faceCam = not faceCam; if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
-elseif key == K.Remove then removeClone()
+print("[MemeActor] Выбран облик:", ACTOR_LIST[modeIdx].Label)
+-- В режиме толпы [U] смена облика [G] просто переключает выбор для следующего спавна, не заменяя уже стоящих!
+if activeClone and not multiCloneMode then
+spawnClone(Config.SpawnDistanceFar, true)
+end
+elseif key == K.PaceToggle then
+isSprint = not isSprint
+print("[MemeActor] Темп:", isSprint and "БЕГ" or "ХОДЬБА")
+elseif key == K.Crouch then
+if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end
+setCrouch(not isCrouching)
+elseif key == K.JitterToggle then
+jitterOn = not jitterOn
+if not jitterOn then
+for _, entry in ipairs(allClones) do EffectsLib.ResetJitter(entry.jitter) end
+end
+elseif key == K.HeadLook then
+headLookOn = not headLookOn
+for _, entry in ipairs(allClones) do entry.neckCF = nil end
+print("[MemeActor] HeadLook 360°:", headLookOn and "ВКЛ" or "ВЫКЛ")
+elseif key == K.Rotate then
+faceCam = not faceCam
+if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
+elseif key == K.Remove then
+removeAllClones()
+print("[MemeActor] Все клоны удалены.")
 else
 for _, b in ipairs(Binds) do
 if key == b.Key and LoadedModes[b.Id] then
@@ -288,25 +375,38 @@ end
 end
 end)
 local renderConn = RunService.RenderStepped:Connect(function(dt)
-if not activeClone or not cloneCF then return end
+if #allClones == 0 then return end
+if jitterOn then
+for _, entry in ipairs(allClones) do
+if entry.model and entry.model.Parent then
+EffectsLib.UpdateJitter(entry.jitter, Config.JitterIntensity or 4.0)
+end
+end
+end
+if activeClone and cloneCF and activeMode and activeMode.OnStep then
 local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
-if not r then return end
-if jitterOn then EffectsLib.UpdateJitter(cachedJitter, Config.JitterIntensity or 4.0) end
-if activeMode and activeMode.OnStep then
 local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+if r then
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
+end
 end
 updateToolDrivers()
 end)
 local steppedConn = RunService.Stepped:Connect(function(_, dt)
-if not activeClone then return end
+if #allClones == 0 then return end
 if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 updateToolDrivers()
-if headLookOn then solveHeadLook(dt) end
+if headLookOn then
+for _, entry in ipairs(allClones) do
+if entry.model and entry.model.Parent then
+solveHeadLookForEntry(entry, dt)
+end
+end
+end
 end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
-removeClone()
+removeAllClones()
 if inputConn then inputConn:Disconnect() end
 if renderConn then renderConn:Disconnect() end
 if steppedConn then steppedConn:Disconnect() end
