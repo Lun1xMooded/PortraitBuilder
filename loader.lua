@@ -1,5 +1,5 @@
 -- loader.lua (Точка входа в репозиторий MemeActor)
-local REPO_BASE = "https://githubusercontent.com"
+local REPO_BASE = "https://raw.githubusercontent.com/Lun1xMooded/PortraitBuilder/refs/heads/main/"
 
 local function Import(path)
     local url = REPO_BASE .. path .. "?t=" .. tostring(os.time())
