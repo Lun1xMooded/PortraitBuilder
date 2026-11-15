@@ -70,17 +70,18 @@ return function(Import, Config)
         cachedNeck.Transform = currentNeckCF
     end
 
-    local function updateToolDrivers()
+       local function updateToolDrivers()
         for _, s in ipairs(cachedToolSyncs) do
             if s.dst.Parent and s.src.Parent then
                 if s.syncOffsets then
-                    s.dst.C0 = s.mirror and MirrorLib.MirrorTransform(s.src.C0) or s.src.C0
-                    s.dst.C1 = s.mirror and MirrorLib.MirrorTransform(s.src.C1) or s.src.C1
+                    s.dst.C0 = s.mirror and MirrorLib.MirrorJointCFrame(s.src.C0) or s.src.C0
+                    s.dst.C1 = s.mirror and MirrorLib.MirrorJointCFrame(s.src.C1) or s.src.C1
                 end
                 s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
             end
         end
     end
+
 
 
 

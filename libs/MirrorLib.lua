@@ -14,9 +14,17 @@ function MirrorLib.IsJoint(inst)
     return inst:IsA("Motor6D") or inst:IsA("AnimationConstraint")
 end
 
+-- Отражение через плоскость YZ (для Transform суставов)
 function MirrorLib.MirrorTransform(cf)
     local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
     return CFrame.new(-x, y, z, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
+end
+
+-- Правильное правостороннее зеркалирование для Motor6D.C0 / C1 (det = +1, Roblox никогда не переворачивает на 180°)
+function MirrorLib.MirrorJointCFrame(cf)
+    local pos = cf.Position
+    local rx, ry, rz = cf:ToEulerAnglesYXZ()
+    return CFrame.new(-pos.X, pos.Y, pos.Z) * CFrame.fromEulerAnglesYXZ(rx, -ry, -rz)
 end
 
 function MirrorLib.ReflectCFrame(planeCF, targetCF)

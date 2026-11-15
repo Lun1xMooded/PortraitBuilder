@@ -47,41 +47,24 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local srcLeftHand  = sourceChar:FindFirstChild("LeftHand") or sourceChar:FindFirstChild("Left Arm")
 
     task.spawn(function()
-        -- Собираем ВСЕ моторы, которые крепят части этого Tool к правой или левой руке игрока
-        local handDrivers = {}
-        for attempt = 1, 35 do
-            if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
-            table.clear(handDrivers)
+        -- Даём DOORS 0.12 сек, чтобы прикрепить ОБА мотора (Handle + LeftHandle для отмычек и двуручных предметов)
+        task.wait(0.12)
+        if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
 
-            for _, desc in ipairs(sourceChar:GetDescendants()) do
-                if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) and desc.Part0 and desc.Part1 then
-                    local isToolPart = desc.Part1:IsDescendantOf(sourceTool) or desc.Name == "Handle" or desc.Name == "LeftHandle"
-                    if isToolPart then
-                        if desc.Part0 == srcRightHand then
-                            table.insert(handDrivers, { side = "Right", motor = desc, partName = desc.Part1.Name })
-                        elseif desc.Part0 == srcLeftHand then
-                            table.insert(handDrivers, { side = "Left", motor = desc, partName = desc.Part1.Name })
-                        end
+        local handDrivers = {}
+        for _, desc in ipairs(sourceChar:GetDescendants()) do
+            if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) and desc.Part0 and desc.Part1 then
+                local isToolPart = desc.Part1:IsDescendantOf(sourceTool) or desc.Name == "Handle" or desc.Name == "LeftHandle"
+                if isToolPart then
+                    if desc.Part0 == srcRightHand then
+                        table.insert(handDrivers, { side = "Right", motor = desc, partName = desc.Part1.Name })
+                    elseif desc.Part0 == srcLeftHand then
+                        table.insert(handDrivers, { side = "Left", motor = desc, partName = desc.Part1.Name })
                     end
                 end
             end
-
-            -- Ждём, пока появятся кастомные моторы DOORS (не временный RightGrip)
-            local hasCustom = false
-            for _, drv in ipairs(handDrivers) do
-                if drv.motor.Name ~= "RightGrip" and drv.motor.Name ~= "LeftGrip" then
-                    hasCustom = true
-                    break
-                end
-            end
-
-            if hasCustom or (attempt >= 20 and #handDrivers > 0) then
-                break
-            end
-            task.wait()
         end
 
-        if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
         clearOldTools(clone, cachedToolSyncs)
 
         local dstLeftHand  = clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm")
@@ -121,7 +104,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
         end
         clonedTool.Parent = clone
 
-        -- Удаляем старые внешние соединения к руке игрока
+        -- Удаляем старые моторы, привязанные к рукам игрока (чтобы LeftHandle не оставался привязан к игроку!)
         for _, desc in ipairs(clonedTool:GetDescendants()) do
             if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
                 if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
@@ -130,7 +113,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             end
         end
 
-        -- Привязываем каждую найденную часть к нужной руке клона (в MirrorMode: Right -> Left, Left -> Right)
         for _, drv in ipairs(handDrivers) do
             local targetPart = toolParts[drv.partName] or clonedTool:FindFirstChild(drv.partName, true)
             local targetHand = isMirrored
@@ -142,8 +124,8 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                 newJoint.Name = drv.motor.Name
                 newJoint.Part0 = targetHand
                 newJoint.Part1 = targetPart
-                newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(drv.motor.C0) or drv.motor.C0
-                newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(drv.motor.C1) or drv.motor.C1
+                newJoint.C0 = isMirrored and MirrorLib.MirrorJointCFrame(drv.motor.C0) or drv.motor.C0
+                newJoint.C1 = isMirrored and MirrorLib.MirrorJointCFrame(drv.motor.C1) or drv.motor.C1
                 newJoint.Parent = targetHand
 
                 table.insert(cachedToolSyncs, {
