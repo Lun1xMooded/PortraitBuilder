@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.4.0 — Exact PortraitTwinTool Driver)
+-- core/MainEngine.lua (Pure Modular Core v0.4.1 — Zero-Lag Tool Driver)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -68,6 +68,20 @@ return function(Import, Config)
         local targetTr = cachedNeck.C1 * CFrame.fromEulerAnglesYXZ(rx, ry, rz) * cachedNeck.C1:Inverse()
         currentNeckCF = currentNeckCF and currentNeckCF:Lerp(targetTr, math.clamp((dt or 0.016) * 14, 0, 1)) or targetTr
         cachedNeck.Transform = currentNeckCF
+    end
+
+    local function updateToolDrivers()
+        for _, s in ipairs(cachedToolSyncs) do
+            if s.isDriver then
+                if s.part.Parent and s.hand.Parent and s.src.Parent then
+                    local c0 = s.gripInv and (s.src.C0 * s.gripInv) or s.src.C0
+                    local rel = c0 * s.src.Transform * s.src.C1:Inverse()
+                    s.part.CFrame = s.hand.CFrame * MirrorLib.MirrorTransform(rel)
+                end
+            elseif s.dst.Parent and s.src.Parent then
+                s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
+            end
+        end
     end
 
     local function setCrouch(state)
@@ -186,21 +200,19 @@ return function(Import, Config)
             local flat = (cam.CFrame.LookVector * Vector3.new(1, 0, 1))
             flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
             local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
-            local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
-            cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
-        end
-        if root then root.CFrame = cloneCF end
-
-        tracks = RigLib.SetupAnimations(clone, srcChar)
-        setCrouch(sCrouch)
-        if sMode then setMode(sMode, sSub) end
-        print("[MemeActor] Заспавнен:", ACTOR_LABELS[modeName])
-    end
-
-    local ModeAPI = {
-        Config = Config, Import = Import,
-        GetClone = function() return activeClone end,
-        GetCFrame = function() return cloneCF end,
+local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
+cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
+end
+if root then root.CFrame = cloneCF end
+tracks = RigLib.SetupAnimations(clone, srcChar)
+setCrouch(sCrouch)
+if sMode then setMode(sMode, sSub) end
+print("[MemeActor] Заспавнен:", ACTOR_LABELS[modeName])
+end
+local ModeAPI = {
+Config = Config, Import = Import,
+GetClone = function() return activeClone end,
+GetCFrame = function() return cloneCF end,
 SetCFrame = function(cf)
 cloneCF = cf
 local r = activeClone and (activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart"))
@@ -213,6 +225,7 @@ IsHeadLookEnabled = function() return headLookOn end,
 AttachTool = function(mirrored, skipTrack)
 RigLib.AttachTool(activeClone, mirrored, ACTOR_MODES[modeIdx] ~= "Player", MirrorLib, cachedToolSyncs)
 RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
+updateToolDrivers()
 end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
@@ -265,22 +278,13 @@ if activeMode and activeMode.OnStep then
 local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
+-- Обновляем позицию Handle и в RenderStepped для 0-лагового рендера
+updateToolDrivers()
 end)
 local steppedConn = RunService.Stepped:Connect(function(_, dt)
 if not activeClone then return end
 if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
--- Обновление суставов и драйвера Handle 1:1 по PortraitTwinTool (строки 299-304)
-for _, s in ipairs(cachedToolSyncs) do
-if s.isDriver then
-if s.part.Parent and s.hand.Parent and s.src.Parent then
-local c0 = s.gripInv and (s.src.C0 * s.gripInv) or s.src.C0
-local rel = c0 * s.src.Transform * s.src.C1:Inverse()
-s.part.CFrame = s.hand.CFrame * MirrorLib.MirrorTransform(rel)
-end
-elseif s.dst.Parent and s.src.Parent then
-s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
-end
-end
+updateToolDrivers()
 if headLookOn then solveHeadLook(dt) end
 end)
 ENV.StopMemeActor = function()

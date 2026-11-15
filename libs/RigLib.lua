@@ -76,16 +76,15 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local targetPart = clonedTool:FindFirstChild("Handle") or clonedTool:FindFirstChild("Main") or clonedTool:FindFirstChildWhichIsA("BasePart")
     if not targetPart then return end
 
-    for _, j in ipairs(targetPart:GetChildren()) do
-        if (j:IsA("Motor6D") or j:IsA("Weld") or j:IsA("WeldConstraint")) then
-            if not j.Part0 or not j.Part0:IsDescendantOf(clonedTool) or not j.Part1 or not j.Part1:IsDescendantOf(clonedTool) then
-                j:Destroy()
+    -- Удаляем внешние сварки, которые держали предмет в руке оригинала (из-за них предмет мог зависать в воздухе)
+    for _, desc in ipairs(clonedTool:GetDescendants()) do
+        if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
+            if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
+                desc:Destroy()
             end
         end
     end
 
-    -- Точная логика PortraitTwinTool (строки 248-252 и 293-305):
-    -- В MirrorMode Handle якорится и обновляется напрямую через hand.CFrame * mirrorTransform(C0 * Transform * C1:Inverse())!
     if isMirrored and srcHandleMotor then
         targetPart.Anchored = true
         local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
