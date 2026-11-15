@@ -33,16 +33,14 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local sourceTool = sourceChar:FindFirstChildOfClass("Tool")
     if not sourceTool then return end
 
-    -- В MirrorMode (как в PortraitTwinTool) предмет крепится в LeftHand, в обычном режиме — в RightHand
     local targetHand = isMirrored
         and (clone:FindFirstChild("LeftHand") or clone:FindFirstChild("Left Arm"))
         or (clone:FindFirstChild("RightHand") or clone:FindFirstChild("Right Arm"))
     if not targetHand then return end
 
-    -- Ищем оригинальный Motor6D "Handle" в персонаже игрока (как ToolCache.findMotor в PortraitTwinTool)
     local srcHandleMotor = nil
     for _, desc in ipairs(sourceChar:GetDescendants()) do
-        if desc:IsA("Motor6D") and (desc.Name == "Handle" or desc.Name == "RightGrip") then
+        if (desc:IsA("Motor6D") or desc:IsA("AnimationConstraint")) and (desc.Name == "Handle" or desc.Name == "RightGrip") then
             srcHandleMotor = desc
             break
         end
@@ -55,7 +53,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
 
     local srcToolMotors = {}
     for _, d in ipairs(sourceTool:GetDescendants()) do
-        if d:IsA("Motor6D") then srcToolMotors[d.Name] = d end
+        if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then srcToolMotors[d.Name] = d end
     end
 
     for _, d in ipairs(clonedTool:GetDescendants()) do
@@ -69,7 +67,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                 if d:IsA("MeshPart") then d.TextureID = "" end
             end
         elseif d:IsA("Decal") then d.LocalTransparencyModifier = 0
-        elseif d:IsA("Motor6D") and srcToolMotors[d.Name] then
+        elseif (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and srcToolMotors[d.Name] then
             table.insert(cachedToolSyncs, { dst = d, src = srcToolMotors[d.Name], mirror = isMirrored })
         end
     end
@@ -86,24 +84,34 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
         end
     end
 
+    -- Точная логика PortraitTwinTool (строки 248-252 и 293-305):
+    -- В MirrorMode Handle якорится и обновляется напрямую через hand.CFrame * mirrorTransform(C0 * Transform * C1:Inverse())!
+    if isMirrored and srcHandleMotor then
+        targetPart.Anchored = true
+        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
+        local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
+        table.insert(cachedToolSyncs, {
+            isDriver = true,
+            part = targetPart,
+            hand = targetHand,
+            src = srcHandleMotor,
+            gripInv = gripInv
+        })
+        return
+    end
+
     local newJoint = Instance.new("Motor6D")
     if srcHandleMotor then
         newJoint.Name = "Handle"
         newJoint.Part0 = targetHand
         newJoint.Part1 = targetPart
-        local c0 = srcHandleMotor.C0
-        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
-        if typeof(gripOffset) == "Vector3" then
-            c0 = c0 * CFrame.new(gripOffset):Inverse()
-        end
-        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(c0) or c0
-        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(srcHandleMotor.C1) or srcHandleMotor.C1
-        table.insert(cachedToolSyncs, { dst = newJoint, src = srcHandleMotor, mirror = isMirrored })
+        newJoint.C0 = srcHandleMotor.C0
+        newJoint.C1 = srcHandleMotor.C1
+        table.insert(cachedToolSyncs, { dst = newJoint, src = srcHandleMotor, mirror = false })
     else
         newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", targetHand, targetPart
-        local baseC0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-        newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(baseC0) or baseC0
-        newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(clonedTool.Grip) or clonedTool.Grip
+        newJoint.C0 = CFrame.new(0, -0.15, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+        newJoint.C1 = clonedTool.Grip
     end
     newJoint.Parent = targetHand
 end

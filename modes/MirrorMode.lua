@@ -1,5 +1,5 @@
 -- modes/MirrorMode.lua
--- Режим Зеркала [R]: поддержка AnimationConstraint для руки, наклоны корпуса и плавная ходьба
+-- Режим Зеркала [R]: 1:1 инверсия обеих рук, точный поворот корпуса из Movement и правильный хват ключа
 
 return function(API)
     local Players = game:GetService("Players")
@@ -17,10 +17,14 @@ return function(API)
     local smoothStrafeX = 0
     local armMirrorPairs = {}
 
-    local ARM_SWAP = {
-        LeftShoulder = "RightShoulder",
-        LeftElbow    = "RightElbow",
-        LeftWrist    = "RightWrist",
+    -- Зеркалим ОБЕ руки (правую -> в левую, левую -> в правую), чтобы двуручные анимации работали полностью!
+    local BOTH_ARMS_SWAP = {
+        LeftShoulder  = "RightShoulder",
+        LeftElbow     = "RightElbow",
+        LeftWrist     = "RightWrist",
+        RightShoulder = "LeftShoulder",
+        RightElbow    = "LeftElbow",
+        RightWrist    = "LeftWrist",
     }
 
     local function rebuildArmMirror()
@@ -36,8 +40,8 @@ return function(API)
             end
         end
         for _, d in ipairs(clone:GetDescendants()) do
-            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and ARM_SWAP[d.Name] then
-                local srcJoint = srcMap[ARM_SWAP[d.Name]]
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and BOTH_ARMS_SWAP[d.Name] then
+                local srcJoint = srcMap[BOTH_ARMS_SWAP[d.Name]]
                 if srcJoint then
                     table.insert(armMirrorPairs, {
                         name = d.Name,
@@ -47,7 +51,6 @@ return function(API)
                 end
             end
         end
-        print("[MirrorMode] Суставов руки привязано:", #armMirrorPairs)
     end
 
     return {
@@ -139,19 +142,19 @@ return function(API)
             local clone = API.GetClone()
             if not clone then return end
 
-            -- 1. Наклоны и встречный поворот корпуса при движении влево/вправо
+            -- 1. Точный разворот таза и торса из Movement DOORS (строки 1762-1772: чистый Yaw по Y без бокового завала Z)
             if math.abs(smoothStrafeX) > 0.01 then
                 local rootMotor = clone:FindFirstChild("Root", true)
                 local waistMotor = clone:FindFirstChild("Waist", true)
                 if rootMotor and rootMotor:IsA("Motor6D") then
-                    rootMotor.Transform = rootMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * -22), math.rad(smoothStrafeX * -8))
+                    rootMotor.Transform = CFrame.Angles(0, math.rad(smoothStrafeX * -25), 0) * rootMotor.Transform
                 end
                 if waistMotor and waistMotor:IsA("Motor6D") then
-                    waistMotor.Transform = waistMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * 22), math.rad(smoothStrafeX * -6))
+                    waistMotor.Transform = CFrame.Angles(0, math.rad(smoothStrafeX * 25), 0) * waistMotor.Transform
                 end
             end
 
-            -- 2. Зеркалим правую руку игрока (AnimationConstraint) в левую руку клона (Motor6D)
+            -- 2. Зеркалим ОБЕ руки (левую и правую), чтобы двуручные анимации и осмотр ключа работали полностью
             if lastToolName ~= "" then
                 for _, pair in ipairs(armMirrorPairs) do
                     if pair.dst.Parent and pair.src.Parent then

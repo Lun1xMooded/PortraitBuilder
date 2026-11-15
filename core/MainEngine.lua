@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.9 — AnimationConstraint + Stepped Sync)
+-- core/MainEngine.lua (Pure Modular Core v0.4.0 — Exact PortraitTwinTool Driver)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -266,12 +266,18 @@ local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
 end)
--- Stepped срабатывает строго после расчёта анимаций: наклоны, рука и HeadLook работают стабильно
 local steppedConn = RunService.Stepped:Connect(function(_, dt)
 if not activeClone then return end
 if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
+-- Обновление суставов и драйвера Handle 1:1 по PortraitTwinTool (строки 299-304)
 for _, s in ipairs(cachedToolSyncs) do
-if s.dst.Parent and s.src.Parent then
+if s.isDriver then
+if s.part.Parent and s.hand.Parent and s.src.Parent then
+local c0 = s.gripInv and (s.src.C0 * s.gripInv) or s.src.C0
+local rel = c0 * s.src.Transform * s.src.C1:Inverse()
+s.part.CFrame = s.hand.CFrame * MirrorLib.MirrorTransform(rel)
+end
+elseif s.dst.Parent and s.src.Parent then
 s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
 end
 end
