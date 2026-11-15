@@ -44,7 +44,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     if not sourceTool then return end
 
     task.spawn(function()
-        -- Ждём появления моторов хвата (Handle и/или LeftHandle) у игрока
         local srcMotors = {}
         for _ = 1, 30 do
             if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
@@ -97,12 +96,12 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             elseif d:IsA("Decal") then
                 d.LocalTransparencyModifier = 0
             elseif (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and srcInnerMotors[d.Name] then
-                table.insert(cachedToolSyncs, { dst = d, src = srcInnerMotors[d.Name], mirror = isMirrored })
+                -- Внутренние моторы самого предмета (Switch, RingJoint и др.) НЕ зеркалим, чтобы детали не разъезжались
+                table.insert(cachedToolSyncs, { dst = d, src = srcInnerMotors[d.Name], mirror = false })
             end
         end
         clonedTool.Parent = clone
 
-        -- Удаляем внешние сварки от оригинального персонажа
         for _, desc in ipairs(clonedTool:GetDescendants()) do
             if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
                 if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
@@ -110,10 +109,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                 end
             end
         end
-
-        -- Привязка через Motor6D (никакого Anchored — предмет жёстко сидит в руке, как на 2-м фото!)
-        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
-        local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
 
         local attachPlan = isMirrored and {
             { key = "Handle",     hand = leftHand,  part = toolParts.Handle or toolParts.Main or clonedTool:FindFirstChildWhichIsA("BasePart") },
@@ -131,13 +126,8 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                     newJoint.Name = cfg.key
                     newJoint.Part0 = cfg.hand
                     newJoint.Part1 = cfg.part
-
-                    local c0 = srcM.C0
-                    if cfg.key == "Handle" and gripInv then
-                        c0 = c0 * gripInv
-                    end
-
-                    newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(c0) or c0
+                    -- Используем чистые C0 и C1 из руки игрока без смещения ToolGripOffset
+                    newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(srcM.C0) or srcM.C0
                     newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(srcM.C1) or srcM.C1
                     newJoint.Parent = cfg.hand
 
