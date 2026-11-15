@@ -44,7 +44,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     if not sourceTool then return end
 
     task.spawn(function()
-        -- Ждём появления хотя бы одного мотора хвата (Handle или LeftHandle)
+        -- Ждём появления моторов хвата (Handle и/или LeftHandle) у игрока
         local srcMotors = {}
         for _ = 1, 30 do
             if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
@@ -102,7 +102,7 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
         end
         clonedTool.Parent = clone
 
-        -- Удаляем внешние сварки, оставшиеся от оригинального персонажа
+        -- Удаляем внешние сварки от оригинального персонажа
         for _, desc in ipairs(clonedTool:GetDescendants()) do
             if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
                 if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
@@ -111,47 +111,49 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             end
         end
 
-        -- Режим Зеркала (1:1 PortraitTwinTool с поддержкой Handle в левой руке и LeftHandle в правой)
-        if isMirrored and (srcMotors.Handle or srcMotors.LeftHandle) then
-            local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
-            local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
+        -- Привязка через Motor6D (никакого Anchored — предмет жёстко сидит в руке, как на 2-м фото!)
+        local gripOffset = sourceTool:GetAttribute("ToolGripOffset")
+        local gripInv = (typeof(gripOffset) == "Vector3") and CFrame.new(gripOffset):Inverse() or nil
 
-            local driverConfigs = {
-                { key = "Handle",     hand = leftHand,  part = toolParts.Handle or toolParts.Main or clonedTool:FindFirstChildWhichIsA("BasePart") },
-                { key = "LeftHandle", hand = rightHand, part = toolParts.LeftHandle },
-            }
+        local attachPlan = isMirrored and {
+            { key = "Handle",     hand = leftHand,  part = toolParts.Handle or toolParts.Main or clonedTool:FindFirstChildWhichIsA("BasePart") },
+            { key = "LeftHandle", hand = rightHand, part = toolParts.LeftHandle },
+        } or {
+            { key = "Handle",     hand = rightHand, part = toolParts.Handle or toolParts.Main or clonedTool:FindFirstChildWhichIsA("BasePart") },
+            { key = "LeftHandle", hand = leftHand,  part = toolParts.LeftHandle },
+        }
 
-            for _, cfg in ipairs(driverConfigs) do
-                local srcM = srcMotors[cfg.key]
-                if srcM and cfg.part and cfg.hand then
-                    cfg.part.Anchored = true
-                    table.insert(cachedToolSyncs, {
-                        isDriver = true,
-                        part = cfg.part,
-                        hand = cfg.hand,
-                        src = srcM,
-                        gripInv = (cfg.key == "Handle") and gripInv or nil
-                    })
+        for _, cfg in ipairs(attachPlan) do
+            local srcM = srcMotors[cfg.key]
+            if cfg.part and cfg.hand then
+                if srcM then
+                    local newJoint = Instance.new("Motor6D")
+                    newJoint.Name = cfg.key
+                    newJoint.Part0 = cfg.hand
+                    newJoint.Part1 = cfg.part
+
+                    local c0 = srcM.C0
+                    if cfg.key == "Handle" and gripInv then
+                        c0 = c0 * gripInv
+                    end
+
+                    newJoint.C0 = isMirrored and MirrorLib.MirrorTransform(c0) or c0
+                    newJoint.C1 = isMirrored and MirrorLib.MirrorTransform(srcM.C1) or srcM.C1
+                    newJoint.Parent = cfg.hand
+
+                    table.insert(cachedToolSyncs, { dst = newJoint, src = srcM, mirror = isMirrored })
+                elseif cfg.key == "Handle" then
+                    local fallback = Instance.new("Motor6D")
+                    fallback.Name = "Handle"
+                    fallback.Part0 = cfg.hand
+                    fallback.Part1 = cfg.part
+                    local baseC0 = CFrame.new(0, -0.15, 0)
+                    fallback.C0 = isMirrored and MirrorLib.MirrorTransform(baseC0) or baseC0
+                    fallback.C1 = isMirrored and MirrorLib.MirrorTransform(clonedTool.Grip) or clonedTool.Grip
+                    fallback.Parent = cfg.hand
                 end
             end
-            return
         end
-
-        -- Обычный режим (правая рука)
-        local targetPart = toolParts.Handle or toolParts.Main or clonedTool:FindFirstChildWhichIsA("BasePart")
-        if not targetPart then return end
-
-        local newJoint = Instance.new("Motor6D")
-        if srcMotors.Handle then
-            newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", rightHand, targetPart
-            newJoint.C0, newJoint.C1 = srcMotors.Handle.C0, srcMotors.Handle.C1
-            table.insert(cachedToolSyncs, { dst = newJoint, src = srcMotors.Handle, mirror = false })
-        else
-            newJoint.Name, newJoint.Part0, newJoint.Part1 = "Handle", rightHand, targetPart
-            newJoint.C0 = CFrame.new(0, -0.15, 0)
-            newJoint.C1 = clonedTool.Grip
-        end
-        newJoint.Parent = rightHand
     end)
 end
 
