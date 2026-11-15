@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.3.6 — Post-Animator Sync)
+-- core/MainEngine.lua (Pure Modular Core v0.3.7 — Heartbeat Post-Animator + Debug Support)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -248,7 +248,6 @@ end
 end
 end
 end)
--- RenderStepped срабатывает ПОСЛЕ Animator: здесь рука и HeadLook никогда не перезапишутся анимацией Idle!
 RunService.RenderStepped:Connect(function(dt)
 if not activeClone or not cloneCF then return end
 local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
@@ -258,17 +257,17 @@ if activeMode and activeMode.OnStep then
 local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
 activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
 end
-if activeMode and activeMode.OnStepped then
-activeMode.OnStepped(dt)
-end
+end)
+-- Heartbeat выполняется ПОСЛЕ внутреннего шага Animator: здесь наклоны, рука и HeadLook не сбрасываются анимацией Idle!
+RunService.Heartbeat:Connect(function(dt)
+if not activeClone then return end
+if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 for _, s in ipairs(cachedToolSyncs) do
 if s.dst.Parent and s.src.Parent then
 s.dst.Transform = s.mirror and MirrorLib.MirrorTransform(s.src.Transform) or s.src.Transform
 end
 end
-if headLookOn then
-solveHeadLook(dt)
-end
+if headLookOn then solveHeadLook(dt) end
 end)
 Registry.PrintStartupBanner(Config)
 end

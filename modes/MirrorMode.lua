@@ -1,5 +1,5 @@
 -- modes/MirrorMode.lua
--- Режим Зеркала [R]: точное зеркалирование руки с предметом (Inspect/Equip) + плавная ходьба
+-- Режим Зеркала [R]: наклоны корпуса + пост-анимационная рука + дебаг принты
 
 return function(API)
     local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ return function(API)
     local smoothedSpeed = 0
     local smoothStrafeX = 0
     local armMirrorPairs = {}
+    local lastDebugTick = 0
 
     local ARM_SWAP = {
         LeftShoulder = "RightShoulder",
@@ -27,7 +28,10 @@ return function(API)
         table.clear(armMirrorPairs)
         local myChar = LocalPlayer.Character
         local clone = API.GetClone()
-        if not myChar or not clone then return end
+        if not myChar or not clone then
+            warn("[MirrorDebug] rebuildArmMirror: нет myChar или clone!")
+            return
+        end
 
         local srcMap = {}
         for _, d in ipairs(myChar:GetDescendants()) do
@@ -36,14 +40,20 @@ return function(API)
             end
         end
         for _, d in ipairs(clone:GetDescendants()) do
-            if d:IsA("Motor6D") and ARM_SWAP[d.Name] and srcMap[ARM_SWAP[d.Name]] then
-                table.insert(armMirrorPairs, {
-                    name = d.Name,
-                    dst = d,
-                    src = srcMap[ARM_SWAP[d.Name]]
-                })
+            if d:IsA("Motor6D") and ARM_SWAP[d.Name] then
+                local srcJoint = srcMap[ARM_SWAP[d.Name]]
+                if srcJoint then
+                    table.insert(armMirrorPairs, {
+                        name = d.Name,
+                        dst = d,
+                        src = srcJoint
+                    })
+                else
+                    warn("[MirrorDebug] Не найден сустав у игрока:", ARM_SWAP[d.Name])
+                end
             end
         end
+        print("[MirrorDebug] Найдено пар суставов руки:", #armMirrorPairs)
     end
 
     return {
@@ -64,11 +74,14 @@ return function(API)
 
             API.AttachTool(true, true)
             lastToolName = (myChar and myChar:FindFirstChildOfClass("Tool") and myChar:FindFirstChildOfClass("Tool").Name) or ""
+            print("[MirrorDebug] Активация MirrorMode! Предмет в руках:", lastToolName ~= "" and lastToolName or "ПУСТО")
             rebuildArmMirror()
+
             lastClonePos = cloneCF and cloneCF.Position or nil
             smoothedSpeed = 0
             smoothStrafeX = 0
             stepAccum = 0
+            lastDebugTick = os.clock()
         end,
 
         OnDeactivate = function()
@@ -78,6 +91,7 @@ return function(API)
             API.SetCrouch(false)
             API.UpdateAnimation(0, false)
             API.AttachTool(false, false)
+            print("[MirrorDebug] MirrorMode выключен.")
         end,
 
         OnStep = function(dt, cloneCFrame, root, myRoot)
@@ -125,6 +139,7 @@ return function(API)
             local curName = curTool and curTool.Name or ""
             if curName ~= lastToolName then
                 lastToolName = curName
+                print("[MirrorDebug] Смена предмета ->", lastToolName ~= "" and lastToolName or "УБРАН")
                 API.AttachTool(true, true)
                 rebuildArmMirror()
             end
@@ -134,24 +149,37 @@ return function(API)
             local clone = API.GetClone()
             if not clone then return end
 
+            -- 1. Возвращены наклоны и встречный поворот корпуса при движении влево/вправо!
             if math.abs(smoothStrafeX) > 0.01 then
                 local rootMotor = clone:FindFirstChild("Root", true)
                 local waistMotor = clone:FindFirstChild("Waist", true)
                 if rootMotor and rootMotor:IsA("Motor6D") then
-                    rootMotor.Transform = rootMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * -18), 0)
+                    rootMotor.Transform = rootMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * -22), math.rad(smoothStrafeX * -8))
                 end
                 if waistMotor and waistMotor:IsA("Motor6D") then
-                    waistMotor.Transform = waistMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * 18), 0)
+                    waistMotor.Transform = waistMotor.Transform * CFrame.Angles(0, math.rad(smoothStrafeX * 22), math.rad(smoothStrafeX * -6))
                 end
             end
 
-            -- Прямое зеркалирование позы правой руки игрока в левую руку клона (после Animator!)
+            -- 2. Зеркалим правую руку игрока в левую руку клона на Heartbeat (после Animator)
             if lastToolName ~= "" then
                 for _, pair in ipairs(armMirrorPairs) do
                     if pair.dst.Parent and pair.src.Parent then
                         pair.dst.Transform = MirrorLib.MirrorTransform(pair.src.Transform)
                     end
                 end
+            end
+
+            -- 3. Дебаг-принт раз в 2 секунды, чтобы видеть реальные углы руки игрока и клона
+            if os.clock() - lastDebugTick >= 2 then
+                lastDebugTick = os.clock()
+                local pInfo = "нет пар"
+                if #armMirrorPairs > 0 then
+                    local sh = armMirrorPairs[1]
+                    local rx, ry, rz = sh.src.Transform:ToEulerAnglesXYZ()
+                    pInfo = string.format("%s src=(%.1f, %.1f, %.1f)", sh.name, math.deg(rx), math.deg(ry), math.deg(rz))
+                end
+                print(string.format("[MirrorDebug] Tool='%s' | Pairs=%d | %s | Strafe=%.2f", lastToolName, #armMirrorPairs, pInfo, smoothStrafeX))
             end
         end
     }
