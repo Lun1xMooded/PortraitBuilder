@@ -14,8 +14,7 @@ Registry.ModeModules = {
     { Id = "Statue",        Path = "modes/StatueMode.lua" },
     { Id = "Mirror",        Path = "modes/MirrorMode.lua" },
     { Id = "HardcoreChase", Path = "modes/HardcoreChaseMode.lua" },
-	{ Id = "Pathfind",      Path = "modes/PathfindMode.lua" },
-
+    { Id = "Pathfind",      Path = "modes/PathfindMode.lua" },
 }
 
 -- 3. Привязка клавиш к режимам
@@ -43,7 +42,6 @@ Registry.SystemKeys = {
 }
 
 -- 5. Декларативная структура меню DOORS (открывается на [ или ])
--- Чтобы добавить новую вкладку или кнопку (например, Freecam), просто добавь её сюда!
 Registry.MenuCategories = {
     {
         Id = "Actor",
@@ -78,7 +76,7 @@ Registry.MenuCategories = {
             { Type = "Button",  Text = "Удар BoxingGloves [O]",     ButtonText = "PUNCH",    Action = "Punch" },
         }
     },
-	    {
+    {
         Id = "CameraAndPath",
         Title = "Путь / Камера",
         Icon = "rbxassetid://10099841910",
@@ -86,16 +84,16 @@ Registry.MenuCategories = {
             { Type = "Section", Text = "Свободная камера (Freecam)" },
             { Type = "Toggle",  Text = "Свободная камера (WASD + QE)", StateKey = "Freecam" },
             { Type = "Section", Text = "PathfindNodes (Планировка и точки)" },
-            { Type = "Button",  Text = "Открыть карту комнаты (Carpet / Мебель)", ButtonText = "ROOM MAP",    Action = "OpenRoomMap" },
+            { Type = "Button",  Text = "Открыть схему комнаты (Carpet / Мебель)", ButtonText = "ROOM MAP",    Action = "OpenRoomMap" },
             { Type = "Button",  Text = "Поставить точку в моей позиции",          ButtonText = "ADD NODE",    Action = "AddNodeHere" },
             { Type = "Button",  Text = "Авто-маршрут по коврам (Carpet)",         ButtonText = "AUTO CARPET", Action = "AutoCarpet" },
             { Type = "Button",  Text = "Запустить бег клона по точкам",          ButtonText = "START PATH",  ModeId = "Pathfind", AutoSpawn = "Close", Color = Color3.fromRGB(76, 154, 204) },
+            { Type = "Toggle",  Text = "Показывать 3D-шары точек в комнате",      StateKey = "PathMarkers" },
             { Type = "Toggle",  Text = "Зациклить маршрут (Loop)",                StateKey = "PathLoop" },
             { Type = "Toggle",  Text = "Бежать по точкам (Sprint)",               StateKey = "PathSprint" },
             { Type = "Button",  Text = "Очистить все точки маршрута",             ButtonText = "CLEAR NODES", Action = "ClearNodes", Color = Color3.fromRGB(204, 68, 26) },
         }
     },
-
 }
 
 function Registry.PrintStartupBanner(Config)

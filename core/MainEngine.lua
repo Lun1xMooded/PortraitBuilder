@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v1.0 — Freecam + PathfindNodes + DoorsMenu)
+-- core/MainEngine.lua (Pure Modular Core v1.0.1 — PathMarkers Toggle Sync)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -158,7 +158,7 @@ return function(Import, Config)
         if not multiCloneMode then removeAllClones()
         elseif activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate(); activeMode, activeSub = nil, nil end
 
-        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
         local srcChar, clone = LocalPlayer.Character, nil
 
         if actorInfo.Type == "CustomBuilder" and actorInfo.Path then
@@ -196,8 +196,7 @@ return function(Import, Config)
             local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
             cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
         end
-        if root then root.CFrame = cloneCF end
-
+if root then root.CFrame = cloneCF end
 tracks = RigLib.SetupAnimations(clone, srcChar)
 table.insert(allClones, {
 model = clone, cframe = cloneCF, head = headPart, neck = neckMotor,
@@ -307,13 +306,14 @@ AutoCarpet = function() if PathfindLib then PathfindLib.AutoGenerateFromCarpet()
 ClearNodes = function() if PathfindLib then PathfindLib.ClearNodes() end end,
 },
 States = {
-MultiClone = { get = function() return multiCloneMode end, set = function(v) multiCloneMode = v end },
-Crouch     = { get = function() return isCrouching end, set = function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end },
-HeadLook   = { get = function() return headLookOn end, set = function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end },
-Jitter     = { get = function() return jitterOn end, set = function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end },
-Freecam    = { get = function() return FreecamLib and FreecamLib.Enabled or false end, set = function(v) if FreecamLib then FreecamLib.SetEnabled(v) end end },
-PathLoop   = { get = function() return PathfindLib and PathfindLib.LoopPath or false end, set = function(v) if PathfindLib then PathfindLib.LoopPath = v end end },
-PathSprint = { get = function() return PathfindLib and PathfindLib.SprintPath or false end, set = function(v) if PathfindLib then PathfindLib.SprintPath = v end end },
+MultiClone  = { get = function() return multiCloneMode end, set = function(v) multiCloneMode = v end },
+Crouch      = { get = function() return isCrouching end, set = function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end },
+HeadLook    = { get = function() return headLookOn end, set = function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end },
+Jitter      = { get = function() return jitterOn end, set = function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end },
+Freecam     = { get = function() return FreecamLib and FreecamLib.Enabled or false end, set = function(v) if FreecamLib then FreecamLib.SetEnabled(v) end end },
+PathMarkers = { get = function() return PathfindLib and PathfindLib.ShowMarkers or false end, set = function(v) if PathfindLib then PathfindLib.SetMarkersVisible(v) end end },
+PathLoop    = { get = function() return PathfindLib and PathfindLib.LoopPath or false end, set = function(v) if PathfindLib then PathfindLib.LoopPath = v end end },
+PathSprint  = { get = function() return PathfindLib and PathfindLib.SprintPath or false end, set = function(v) if PathfindLib then PathfindLib.SprintPath = v end end },
 },
 RunMode = function(mId, sub, autoSpawn)
 if not LoadedModes[mId] then return end

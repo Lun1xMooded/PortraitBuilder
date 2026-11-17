@@ -1,14 +1,14 @@
 -- libs/PathfindLib.lua
--- Сканирует текущую комнату DOORS (Carpet, PathfindNodes, Window, Bed, Bookcase, Dresser, Fireplace, Wardrobe)
--- и строит 2D-карту планировки + 3D-маркеры точек маршрута
+-- Чистая схема комнаты DOORS (ClipsDescendants), отображение маршрута и кнопка скрытия 3D-точек
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local PathfindLib = {
-    Nodes = {},         -- Список Vector3 точек маршрута
+    Nodes = {},
     ShowMarkers = true,
     LoopPath = true,
     SprintPath = false,
@@ -17,15 +17,15 @@ local PathfindLib = {
 local markerFolder = nil
 local mapGui = nil
 
-local FURNITURE_COLORS = {
-    Carpet    = Color3.fromRGB(165, 58, 52),
-    Window    = Color3.fromRGB(115, 195, 255),
-    Bed       = Color3.fromRGB(190, 120, 210),
-    Bookcase  = Color3.fromRGB(130, 88, 55),
-    Dresser   = Color3.fromRGB(175, 125, 78),
-    Fireplace = Color3.fromRGB(245, 120, 45),
-    Wardrobe  = Color3.fromRGB(95, 165, 115),
-    Door      = Color3.fromRGB(255, 222, 189),
+local FURNITURE_STYLES = {
+    Carpet    = { Color = Color3.fromRGB(145, 48, 44),   Alpha = 0.45, Z = 1, Label = false },
+    Window    = { Color = Color3.fromRGB(95, 175, 240),  Alpha = 0.20, Z = 3, Label = true },
+    Bed       = { Color = Color3.fromRGB(175, 105, 195), Alpha = 0.20, Z = 2, Label = true },
+    Bookcase  = { Color = Color3.fromRGB(135, 92, 58),   Alpha = 0.15, Z = 2, Label = true },
+    Dresser   = { Color = Color3.fromRGB(170, 120, 75),  Alpha = 0.15, Z = 2, Label = true },
+    Fireplace = { Color = Color3.fromRGB(235, 110, 40),  Alpha = 0.15, Z = 3, Label = true },
+    Wardrobe  = { Color = Color3.fromRGB(85, 155, 105),  Alpha = 0.15, Z = 2, Label = true },
+    Door      = { Color = Color3.fromRGB(255, 222, 189), Alpha = 0.05, Z = 4, Label = true },
 }
 
 function PathfindLib.GetCurrentRoom()
@@ -54,8 +54,8 @@ function PathfindLib.RefreshMarkers()
         local p = Instance.new("Part")
         p.Name = "Node_" .. i
         p.Shape = Enum.PartType.Ball
-        p.Size = Vector3.new(1.2, 1.2, 1.2)
-        p.Position = pos + Vector3.new(0, 0.6, 0)
+        p.Size = Vector3.new(1.1, 1.1, 1.1)
+        p.Position = pos + Vector3.new(0, 0.55, 0)
         p.Color = (i == 1) and Color3.fromRGB(95, 255, 130) or Color3.fromRGB(255, 222, 189)
         p.Material = Enum.Material.Neon
         p.Anchored = true
@@ -64,8 +64,8 @@ function PathfindLib.RefreshMarkers()
         p.Parent = markerFolder
 
         local bb = Instance.new("BillboardGui")
-        bb.Size = UDim2.new(0, 60, 0, 24)
-        bb.StudsOffset = Vector3.new(0, 1.4, 0)
+        bb.Size = UDim2.new(0, 56, 0, 22)
+        bb.StudsOffset = Vector3.new(0, 1.3, 0)
         bb.AlwaysOnTop = true
         bb.Parent = p
 
@@ -81,19 +81,33 @@ function PathfindLib.RefreshMarkers()
     end
 end
 
+function PathfindLib.SetMarkersVisible(state)
+    PathfindLib.ShowMarkers = state == true
+    PathfindLib.RefreshMarkers()
+end
+
 function PathfindLib.AddNode(pos)
     table.insert(PathfindLib.Nodes, pos)
     PathfindLib.RefreshMarkers()
-    print(string.format("[Pathfind] Добавлена точка #%d (%.1f, %.1f, %.1f)", #PathfindLib.Nodes, pos.X, pos.Y, pos.Z))
 end
 
 function PathfindLib.ClearNodes()
     table.clear(PathfindLib.Nodes)
     PathfindLib.RefreshMarkers()
-    print("[Pathfind] Все точки очищены.")
 end
 
--- Сканирует комнату DOORS: находит Floor, Carpet, мебель (Window, Bed, Bookcase, Dresser, Fireplace, Wardrobe) и PathfindNodes
+local function getCleanModelBounds(model)
+    -- Для Window игнорируем уличный Skybox, берём размер Collision или Glass
+    if model.Name:find("Window") then
+        local col = model:FindFirstChild("Collision") or model:FindFirstChild("Glass")
+        if col and col:IsA("BasePart") then
+            return col.Position, col.Size
+        end
+    end
+    local cf, sz = model:GetBoundingBox()
+    return cf.Position, sz
+end
+
 function PathfindLib.ScanRoom(room)
     room = room or PathfindLib.GetCurrentRoom()
     if not room then return nil end
@@ -116,7 +130,6 @@ function PathfindLib.ScanRoom(room)
     local items = {}
     local nativeNodes = {}
 
-    -- 1. Собираем нативные PathfindNodes из комнаты DOORS (если есть)
     local pfFolder = room:FindFirstChild("PathfindNodes")
     if pfFolder then
         local list = pfFolder:GetChildren()
@@ -128,10 +141,9 @@ function PathfindLib.ScanRoom(room)
         end
     end
 
-    -- 2. Сканируем Carpet, Window, Bed, Bookcase, Dresser, Fireplace, Wardrobe и двери
     for _, desc in ipairs(room:GetDescendants()) do
         if desc:IsA("BasePart") and (desc.Name == "Carpet" or desc.Name == "CarpetLight") then
-            table.insert(items, { Kind = "Carpet", Name = desc.Name, Pos = desc.Position, Size = desc.Size })
+            table.insert(items, { Kind = "Carpet", Pos = desc.Position, Size = desc.Size })
         elseif desc:IsA("Model") then
             local k = nil
             if desc.Name:find("Window") then k = "Window"
@@ -143,8 +155,8 @@ function PathfindLib.ScanRoom(room)
             elseif desc.Name == "Door" or desc.Name == "RoomEntrance" or desc.Name == "RoomExit" then k = "Door"
             end
             if k then
-                local cf, sz = desc:GetBoundingBox()
-                table.insert(items, { Kind = k, Name = desc.Name, Pos = cf.Position, Size = sz })
+                local pos, sz = getCleanModelBounds(desc)
+                table.insert(items, { Kind = k, Pos = pos, Size = sz })
             end
         end
     end
@@ -159,7 +171,6 @@ function PathfindLib.ScanRoom(room)
     }
 end
 
--- Автогенерация маршрута по коврам (Carpet) и нативным узлам DOORS
 function PathfindLib.AutoGenerateFromCarpet()
     local scan = PathfindLib.ScanRoom()
     if not scan then return end
@@ -171,14 +182,12 @@ function PathfindLib.AutoGenerateFromCarpet()
         PathfindLib.AddNode(Vector3.new(entrance.Position.X, scan.FloorY, entrance.Position.Z))
     end
 
-    -- Добавляем центры всех ковров (Carpet)
     for _, it in ipairs(scan.Items) do
         if it.Kind == "Carpet" then
             PathfindLib.AddNode(Vector3.new(it.Pos.X, scan.FloorY, it.Pos.Z))
         end
     end
 
-    -- Если ковров в комнате нет, используем нативные PathfindNodes DOORS
     if #PathfindLib.Nodes <= 1 and #scan.NativeNodes > 0 then
         for _, p in ipairs(scan.NativeNodes) do
             PathfindLib.AddNode(p)
@@ -190,28 +199,25 @@ function PathfindLib.AutoGenerateFromCarpet()
     end
 end
 
--- Отдельное окно визуальной карты планировки комнаты (нажми на карту в любом месте — поставится точка!)
 function PathfindLib.OpenLayoutMap()
     local pgui = LocalPlayer:WaitForChild("PlayerGui")
     if mapGui then mapGui:Destroy(); mapGui = nil end
 
     local scan = PathfindLib.ScanRoom()
-    if not scan then
-        warn("[Pathfind] Комната не найдена!")
-        return
-    end
+    if not scan then return end
 
     mapGui = Instance.new("ScreenGui")
     mapGui.Name = "MemeActorRoomMap"
+    mapGui.DisplayOrder = 25 -- Поверх основного меню DOORS!
     mapGui.ResetOnSpawn = false
     mapGui.Parent = pgui
 
     local frame = Instance.new("Frame")
     frame.AnchorPoint = Vector2.new(0.5, 0.5)
     frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    frame.Size = UDim2.new(0, 460, 0, 500)
+    frame.Size = UDim2.new(0, 500, 0, 540)
     frame.BackgroundColor3 = Color3.fromRGB(30, 17, 16)
-    frame.BackgroundTransparency = 0.1
+    frame.BackgroundTransparency = 0.04
     frame.Parent = mapGui
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
     local st = Instance.new("UIStroke", frame)
@@ -220,11 +226,11 @@ function PathfindLib.OpenLayoutMap()
     CollectionService:AddTag(frame, "UnlockMouseVisible")
 
     local hdr = Instance.new("TextLabel")
-    hdr.Position = UDim2.new(0, 12, 0, 6)
-    hdr.Size = UDim2.new(1, -50, 0, 32)
+    hdr.Position = UDim2.new(0, 14, 0, 8)
+    hdr.Size = UDim2.new(1, -56, 0, 30)
     hdr.BackgroundTransparency = 1
     hdr.Font = Enum.Font.Oswald
-    hdr.Text = "ПЛАН КОМНАТЫ #" .. scan.Room.Name .. " (КЛИКНИ ПО КАРТЕ ДЛЯ ТОЧКИ)"
+    hdr.Text = "СХЕМА КОМНАТЫ #" .. scan.Room.Name .. " — КЛИКНИ ПО ПОЛУ ДЛЯ ТОЧКИ"
     hdr.TextColor3 = Color3.fromRGB(255, 222, 189)
     hdr.TextScaled = true
     hdr.TextXAlignment = Enum.TextXAlignment.Left
@@ -232,8 +238,8 @@ function PathfindLib.OpenLayoutMap()
 
     local close = Instance.new("TextButton")
     close.AnchorPoint = Vector2.new(1, 0)
-    close.Position = UDim2.new(1, -8, 0, 6)
-    close.Size = UDim2.new(0, 32, 0, 32)
+    close.Position = UDim2.new(1, -10, 0, 8)
+    close.Size = UDim2.new(0, 30, 0, 30)
     close.BackgroundColor3 = Color3.fromRGB(204, 68, 26)
     close.Font = Enum.Font.Oswald
     close.Text = "X"
@@ -243,51 +249,114 @@ function PathfindLib.OpenLayoutMap()
     Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
     close.MouseButton1Click:Connect(function() if mapGui then mapGui:Destroy(); mapGui = nil end end)
 
+    -- Холст комнаты с ClipsDescendants = true (ничто не вылезет за рамки!)
     local canvas = Instance.new("TextButton")
     canvas.Position = UDim2.new(0, 14, 0, 44)
-    canvas.Size = UDim2.new(1, -28, 1, -94)
-    canvas.BackgroundColor3 = Color3.fromRGB(20, 12, 11)
+    canvas.Size = UDim2.new(1, -28, 1, -132)
+    canvas.BackgroundColor3 = Color3.fromRGB(22, 14, 13)
+    canvas.ClipsDescendants = true
     canvas.Text = ""
     canvas.AutoButtonColor = false
     canvas.Parent = frame
     Instance.new("UICorner", canvas).CornerRadius = UDim.new(0, 8)
-    Instance.new("UIStroke", canvas).Color = Color3.fromRGB(80, 68, 62)
+    local cStroke = Instance.new("UIStroke", canvas)
+    cStroke.Color = Color3.fromRGB(110, 92, 82)
+    cStroke.Thickness = 2
 
-    local spanX = math.max(10, scan.MaxX - scan.MinX)
-    local spanZ = math.max(10, scan.MaxZ - scan.MinZ)
-
-    local function toUV(pos)
-return math.clamp((pos.X - scan.MinX) / spanX, 0.02, 0.98), math.clamp((pos.Z - scan.MinZ) / spanZ, 0.02, 0.98)
+local spanX = math.max(10, scan.MaxX - scan.MinX)
+local spanZ = math.max(10, scan.MaxZ - scan.MinZ)
+local function toUV(pos)
+return math.clamp((pos.X - scan.MinX) / spanX, 0.03, 0.97), math.clamp((pos.Z - scan.MinZ) / spanZ, 0.03, 0.97)
 end
 local function redraw()
 canvas:ClearAllChildren()
--- Отрисовка ковров (Carpet) и мебели (Window, Bed, Bookcase, Dresser, Fireplace, Wardrobe)
+-- 1. Мебель и ковры (с аккуратными пропорциями)
 for _, it in ipairs(scan.Items) do
+local style = FURNITURE_STYLES[it.Kind]
+if style then
 local u, v = toUV(it.Pos)
+local w = math.clamp(it.Size.X / spanX, 0.04, 0.88)
+local h = math.clamp(it.Size.Z / spanZ, 0.04, 0.88)
 local box = Instance.new("Frame")
 box.AnchorPoint = Vector2.new(0.5, 0.5)
 box.Position = UDim2.new(u, 0, v, 0)
-box.Size = UDim2.new(math.clamp(it.Size.X / spanX, 0.04, 0.9), 0, math.clamp(it.Size.Z / spanZ, 0.04, 0.9), 0)
-box.BackgroundColor3 = FURNITURE_COLORS[it.Kind] or Color3.fromRGB(140, 140, 140)
-box.BackgroundTransparency = (it.Kind == "Carpet") and 0.55 or 0.25
-box.ZIndex = (it.Kind == "Carpet") and 1 or 2
+box.Size = UDim2.new(w, 0, h, 0)
+box.BackgroundColor3 = style.Color
+box.BackgroundTransparency = style.Alpha
+box.ZIndex = style.Z
 box.Parent = canvas
 Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-if it.Kind ~= "Carpet" then
+local bStroke = Instance.new("UIStroke", box)
+bStroke.Color = style.Color
+bStroke.Thickness = 1.2
+bStroke.Transparency = 0.3
+if style.Label then
 local tag = Instance.new("TextLabel")
-tag.Size = UDim2.new(1, 0, 1, 0)
+tag.AnchorPoint = Vector2.new(0.5, 0.5)
+tag.Position = UDim2.new(0.5, 0, 0.5, 0)
+tag.Size = UDim2.new(0, 64, 0, 16)
 tag.BackgroundTransparency = 1
 tag.Font = Enum.Font.Oswald
 tag.Text = it.Kind
 tag.TextColor3 = Color3.new(1, 1, 1)
-tag.TextScaled = true
-tag.ZIndex = 3
+tag.TextStrokeTransparency = 0.3
+tag.TextSize = 13
+tag.ZIndex = style.Z + 1
 tag.Parent = box
 end
 end
--- Отрисовка поставленных точек PathfindNodes
+end
+-- 2. Позиция игрока (синяя метка "ТЫ") и клона (жёлтая метка "КЛОН")
+local myRoot = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
+if myRoot then
+local u, v = toUV(myRoot.Position)
+local meDot = Instance.new("TextLabel")
+meDot.AnchorPoint = Vector2.new(0.5, 0.5)
+meDot.Position = UDim2.new(u, 0, v, 0)
+meDot.Size = UDim2.new(0, 34, 0, 18)
+meDot.BackgroundColor3 = Color3.fromRGB(70, 150, 255)
+meDot.Font = Enum.Font.Oswald
+meDot.Text = "ТЫ"
+meDot.TextColor3 = Color3.new(1, 1, 1)
+meDot.TextSize = 13
+meDot.ZIndex = 6
+meDot.Parent = canvas
+Instance.new("UICorner", meDot).CornerRadius = UDim.new(0, 4)
+end
+local clone = getgenv().ActiveActorClone
+if clone and clone.PrimaryPart then
+local u, v = toUV(clone.PrimaryPart.Position)
+local cDot = Instance.new("TextLabel")
+cDot.AnchorPoint = Vector2.new(0.5, 0.5)
+cDot.Position = UDim2.new(u, 0, v, 0)
+cDot.Size = UDim2.new(0, 42, 0, 18)
+cDot.BackgroundColor3 = Color3.fromRGB(255, 195, 65)
+cDot.Font = Enum.Font.Oswald
+cDot.Text = "КЛОН"
+cDot.TextColor3 = Color3.fromRGB(30, 17, 16)
+cDot.TextSize = 13
+cDot.ZIndex = 6
+cDot.Parent = canvas
+Instance.new("UICorner", cDot).CornerRadius = UDim.new(0, 4)
+end
+-- 3. Линии и точки маршрута PathfindNodes
+local prevPx = nil
 for idx, nPos in ipairs(PathfindLib.Nodes) do
 local u, v = toUV(nPos)
+local curPx = Vector2.new(u * canvas.AbsoluteSize.X, v * canvas.AbsoluteSize.Y)
+if prevPx then
+local diff = curPx - prevPx
+local line = Instance.new("Frame")
+line.AnchorPoint = Vector2.new(0.5, 0.5)
+line.Position = UDim2.new(0, (prevPx.X + curPx.X) * 0.5, 0, (prevPx.Y + curPx.Y) * 0.5)
+line.Size = UDim2.new(0, diff.Magnitude, 0, 2)
+line.Rotation = math.deg(math.atan2(diff.Y, diff.X))
+line.BackgroundColor3 = Color3.fromRGB(95, 255, 130)
+line.BorderSizePixel = 0
+line.ZIndex = 7
+line.Parent = canvas
+end
+prevPx = curPx
 local dot = Instance.new("TextLabel")
 dot.AnchorPoint = Vector2.new(0.5, 0.5)
 dot.Position = UDim2.new(u, 0, v, 0)
@@ -296,8 +365,8 @@ dot.BackgroundColor3 = Color3.fromRGB(95, 255, 130)
 dot.Font = Enum.Font.Oswald
 dot.Text = tostring(idx)
 dot.TextColor3 = Color3.fromRGB(20, 12, 11)
-dot.TextScaled = true
-dot.ZIndex = 5
+dot.TextSize = 15
+dot.ZIndex = 8
 dot.Parent = canvas
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 end
@@ -310,29 +379,46 @@ local worldPos = Vector3.new(scan.MinX + relX * spanX, scan.FloorY, scan.MinZ + 
 PathfindLib.AddNode(worldPos)
 redraw()
 end)
-local btnAuto = Instance.new("TextButton")
-btnAuto.Position = UDim2.new(0, 14, 1, -42)
-btnAuto.Size = UDim2.new(0.48, -4, 0, 32)
-btnAuto.BackgroundColor3 = Color3.fromRGB(255, 222, 189)
-btnAuto.Font = Enum.Font.Oswald
-btnAuto.Text = "АВТО-ПУТЬ ПО КОВРУ (CARPET)"
-btnAuto.TextColor3 = Color3.fromRGB(39, 20, 17)
-btnAuto.TextScaled = true
-btnAuto.Parent = frame
-Instance.new("UICorner", btnAuto).CornerRadius = UDim.new(0, 6)
-btnAuto.MouseButton1Click:Connect(function() PathfindLib.AutoGenerateFromCarpet(); redraw() end)
-local btnClr = Instance.new("TextButton")
-btnClr.AnchorPoint = Vector2.new(1, 0)
-btnClr.Position = UDim2.new(1, -14, 1, -42)
-btnClr.Size = UDim2.new(0.48, -4, 0, 32)
-btnClr.BackgroundColor3 = Color3.fromRGB(204, 68, 26)
-btnClr.Font = Enum.Font.Oswald
-btnClr.Text = "ОЧИСТИТЬ ТОЧКИ"
-btnClr.TextColor3 = Color3.fromRGB(255, 222, 189)
-btnClr.TextScaled = true
-btnClr.Parent = frame
-Instance.new("UICorner", btnClr).CornerRadius = UDim.new(0, 6)
-btnClr.MouseButton1Click:Connect(function() PathfindLib.ClearNodes(); redraw() end)
+-- Нижняя панель управления (2 ряда аккуратных кнопок)
+local function makeBtn(text, pos, size, bg, fg, onClick)
+local b = Instance.new("TextButton")
+b.Position = pos
+b.Size = size
+b.BackgroundColor3 = bg
+b.Font = Enum.Font.Oswald
+b.Text = text
+b.TextColor3 = fg
+b.TextScaled = true
+b.Parent = frame
+Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+b.MouseButton1Click:Connect(onClick)
+return b
+end
+makeBtn("АВТО-ПУТЬ ПО КОВРУ (CARPET)", UDim2.new(0, 14, 1, -80), UDim2.new(0.48, -4, 0, 32),
+Color3.fromRGB(255, 222, 189), Color3.fromRGB(39, 20, 17), function()
+PathfindLib.AutoGenerateFromCarpet()
 redraw()
+end)
+local hideBtn
+hideBtn = makeBtn(PathfindLib.ShowMarkers and "СПРЯТАТЬ ТОЧКИ (3D: ВКЛ)" or "ПОКАЗАТЬ ТОЧКИ (3D: ВЫКЛ)",
+UDim2.new(0.52, 0, 1, -80), UDim2.new(0.48, -14, 0, 32),
+Color3.fromRGB(98, 145, 204), Color3.fromRGB(255, 255, 255), function()
+PathfindLib.SetMarkersVisible(not PathfindLib.ShowMarkers)
+hideBtn.Text = PathfindLib.ShowMarkers and "СПРЯТАТЬ ТОЧКИ (3D: ВКЛ)" or "ПОКАЗАТЬ ТОЧКИ (3D: ВЫКЛ)"
+end)
+makeBtn("УДАЛИТЬ ПОСЛЕДНЮЮ ТОЧКУ", UDim2.new(0, 14, 1, -42), UDim2.new(0.48, -4, 0, 32),
+Color3.fromRGB(145, 103, 92), Color3.fromRGB(255, 222, 189), function()
+if #PathfindLib.Nodes > 0 then
+table.remove(PathfindLib.Nodes)
+PathfindLib.RefreshMarkers()
+redraw()
+end
+end)
+makeBtn("ОЧИСТИТЬ ВСЕ ТОЧКИ", UDim2.new(0.52, 0, 1, -42), UDim2.new(0.48, -14, 0, 32),
+Color3.fromRGB(204, 68, 26), Color3.fromRGB(255, 222, 189), function()
+PathfindLib.ClearNodes()
+redraw()
+end)
+task.defer(redraw)
 end
 return PathfindLib
