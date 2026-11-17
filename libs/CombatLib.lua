@@ -1,5 +1,5 @@
 -- libs/CombatLib.lua
--- Физический рэгдолл с нативной группой DOORS "Ragdoll" (сталкивается с полом Default, не мешает Player)
+-- Физический рэгдолл с группой "Ragdoll" + красивый отлёт назад всех частей тела
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,7 +12,7 @@ local SWING_IDS = {
     "rbxassetid://98472295325859",  -- swing2
 }
 
--- 1. Удар клона перчатками (перекрывает idle-стойку инструмента)
+-- 1. Удар клона перчатками
 function CombatLib.PlayCloneSwing(clone, comboIndex)
     if not clone then return 1 end
     local hum = clone:FindFirstChildOfClass("Humanoid")
@@ -37,7 +37,7 @@ function CombatLib.PlayCloneSwing(clone, comboIndex)
     return (idx == 1) and 2 or 1
 end
 
--- 2. Жёсткое отбрасывание игрока при нокауте
+-- 2. Отбрасывание локального игрока при нокауте
 function CombatLib.KnockbackPlayer(fromPos, power)
     local char = LocalPlayer.Character
     if not char then return end
@@ -48,7 +48,7 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     local dir = (root.Position - fromPos) * Vector3.new(1, 0, 1)
     dir = (dir.Magnitude > 0.01) and dir.Unit or -root.CFrame.LookVector
 
-    local launchVel = dir * (power or 75) + Vector3.new(0, 32, 0)
+    local launchVel = dir * (power or 70) + Vector3.new(0, 28, 0)
 
     hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
     hum:ChangeState(Enum.HumanoidStateType.Physics)
@@ -62,7 +62,7 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     root.AssemblyLinearVelocity = launchVel
     root.AssemblyAngularVelocity = Vector3.new(math.random(-10, 10), math.random(-6, 6), math.random(-10, 10))
 
-    task.delay(0.32, function()
+    task.delay(0.28, function()
         if bv and bv.Parent then bv:Destroy() end
     end)
 
@@ -73,7 +73,7 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     end)
 end
 
--- 3. Физический рэгдолл клона с нативной группой DOORS "Ragdoll"
+-- 3. Физический рэгдолл клона с красивым отлётом назад (толкает все части тела одновременно!)
 function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
@@ -118,26 +118,45 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         end
     end
 
-    -- Назначаем группу "Ragdoll" (из матрицы DOORS: сталкивается с полом Default, но не мешает Player!)
+    local dir = (knockbackDir * Vector3.new(1, 0, 1))
+    dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
+
+    -- Умеренная сила отлёта: клон красиво отлетает на 8-12 стадов назад и подпрыгивает вверх
+    local clampedPower = math.clamp(power or 42, 28, 55)
+    local launchVel = dir * clampedPower + Vector3.new(0, 22, 0)
+    local tempForces = {}
+
     for _, part in ipairs(clone:GetDescendants()) do
         if part:IsA("BasePart") then
             part.Anchored = false
             part.Massless = false
             pcall(function() part.CollisionGroup = "Ragdoll" end)
+
             if not part:FindFirstAncestorOfClass("Tool") and not part:FindFirstAncestorOfClass("Accessory") then
                 part.CanCollide = true
+                part.AssemblyLinearVelocity = launchVel
+
+                -- Короткий импульс на все части тела (0.14 сек), чтобы отлетело всё тело, а не только Root
+                local bv = Instance.new("BodyVelocity")
+                bv.MaxForce = Vector3.new(8000, 8000, 8000)
+                bv.Velocity = launchVel
+                bv.Parent = part
+                table.insert(tempForces, bv)
             end
         end
     end
 
-    local dir = (knockbackDir * Vector3.new(1, 0, 1))
-    dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
+    -- Верхнюю часть тела толкаем чуть сильнее, чтобы клон красиво опрокидывался на спину
+    local upperTorso = clone:FindFirstChild("UpperTorso")
+    if upperTorso then
+        upperTorso.AssemblyLinearVelocity = launchVel + dir * 10 + Vector3.new(0, 6, 0)
+    end
 
-    local clampedPower = math.clamp(power or 58, 35, 68)
-    local impulse = dir * clampedPower + Vector3.new(0, 28, 0)
-
-    root.AssemblyLinearVelocity = impulse
-    root.AssemblyAngularVelocity = Vector3.new(math.random(-8, 8), math.random(-5, 5), math.random(-8, 8))
+    task.delay(0.14, function()
+        for _, bv in ipairs(tempForces) do
+            if bv and bv.Parent then bv:Destroy() end
+        end
+    end)
 
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
@@ -150,7 +169,7 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
 
     local guardConn = RunService.Heartbeat:Connect(function()
         if not root or not root.Parent then return end
-        if (root.Position - startSafePos).Magnitude > 35 or root.Position.Y < startSafePos.Y - 12 then
+        if (root.Position - startSafePos).Magnitude > 30 or root.Position.Y < startSafePos.Y - 12 then
             root.AssemblyLinearVelocity = Vector3.zero
             root.CFrame = CFrame.new(startSafePos + Vector3.new(0, 2, 0))
         end
@@ -158,10 +177,13 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
 
     return function()
         if guardConn then guardConn:Disconnect() end
+        for _, bv in ipairs(tempForces) do
+            if bv and bv.Parent then bv:Destroy() end
+        end
         if not clone or not clone.Parent then return nil end
 
         clone:SetAttribute("IsRagdoll", nil)
-        local landedPos = root.Position
+        local landedPos = (upperTorso and upperTorso.Parent) and upperTorso.Position or root.Position
 
         for _, inst in ipairs(tempRagdoll) do
             if inst and inst.Parent then inst:Destroy() end
