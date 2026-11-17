@@ -105,7 +105,6 @@ function PathfindLib.SetStartNode(index)
     PathfindLib.StartNodeIndex = index
     PathfindLib.RefreshMarkers()
 
-    -- Телепортируем активного клона на выбранную стартовую точку!
     local clone = getgenv().ActiveActorClone
     local pos = PathfindLib.Nodes[index]
     if clone and pos then
@@ -132,6 +131,23 @@ local function getExactFloorY(roomsList, x, z, fallbackY)
     rp.FilterDescendantsInstances = roomsList
     local hit = workspace:Raycast(Vector3.new(x, fallbackY + 14, z), Vector3.new(0, -35, 0), rp)
     return hit and hit.Position.Y or fallbackY
+end
+
+function PathfindLib.AutoGenerateFromCarpet()
+    local rooms = PathfindLib.GetSortedRooms()
+    local room = rooms[#rooms]
+    if not room then return end
+    PathfindLib.ClearNodes()
+
+    local fl = room:FindFirstChild("Parts") and room.Parts:FindFirstChild("Floor")
+    local fy = fl and (fl.Position.Y + fl.Size.Y * 0.5) or room:GetBoundingBox().Position.Y
+
+    for _, d in ipairs(room:GetDescendants()) do
+        if d:IsA("BasePart") and d.Name == "Carpet" then
+            local exactY = getExactFloorY({ room }, d.Position.X, d.Position.Z, fy)
+            PathfindLib.AddNode(Vector3.new(d.Position.X, exactY, d.Position.Z))
+        end
+    end
 end
 
 local function closeMap()
@@ -169,7 +185,6 @@ function PathfindLib.OpenLayoutMap()
     st.Thickness = 3
     CollectionService:AddTag(frame, "UnlockMouseVisible")
 
-    -- Верхняя панель с переключением комнат
     local hdr = Instance.new("TextLabel")
     hdr.Position = UDim2.new(0, 14, 0, 8)
     hdr.Size = UDim2.new(0.56, 0, 0, 30)
@@ -263,17 +278,15 @@ function PathfindLib.OpenLayoutMap()
     local function updateCamera()
         local dist = (zoomSpan * 0.5) / math.tan(math.rad(0.5))
         local target = baseCenter + camOffset
-        vpCam.CFrame = CFrame.lookAt(target + Vector3.new(0, dist, 0), target, Vector3.new(0, 0, -1))
-    end
-
-    local function loadRoomsPair(idx)
-        allRooms = PathfindLib.GetSortedRooms()
-        selectedIdx = math.clamp(idx, 1, math.max(1, #allRooms))
-        worldModel:ClearAllChildren()
-        table.clear(activeRooms)
-
-        local r1 = allRooms[selectedIdx]
-        local r2 = (selectedIdx > 1) and allRooms[selectedIdx - 1] or allRooms[selectedIdx + 1]
+vpCam.CFrame = CFrame.lookAt(target + Vector3.new(0, dist, 0), target, Vector3.new(0, 0, -1))
+end
+local function loadRoomsPair(idx)
+allRooms = PathfindLib.GetSortedRooms()
+selectedIdx = math.clamp(idx, 1, math.max(1, #allRooms))
+worldModel:ClearAllChildren()
+table.clear(activeRooms)
+local r1 = allRooms[selectedIdx]
+local r2 = (selectedIdx > 1) and allRooms[selectedIdx - 1] or allRooms[selectedIdx + 1]
 if r1 then table.insert(activeRooms, r1) end
 if r2 and r2 ~= r1 then table.insert(activeRooms, r2) end
 local names = {}
@@ -348,7 +361,6 @@ dot.TextSize = 14
 dot.ZIndex = 6
 dot.Parent = overlay
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
--- ЛКМ по точке = сделать стартовой, ПКМ по точке = удалить её вручную!
 dot.MouseButton1Click:Connect(function()
 PathfindLib.SetStartNode(idx)
 redrawOverlays()
@@ -389,7 +401,6 @@ cDot.Parent = overlay
 Instance.new("UICorner", cDot).CornerRadius = UDim.new(0, 4)
 end
 end
--- Зум колёсиком и перетаскивание карты правой кнопкой мыши
 local panning, panStartMouse, panStartOffset = false, Vector2.zero, Vector3.zero
 overlay.InputChanged:Connect(function(inp)
 if inp.UserInputType == Enum.UserInputType.MouseWheel then
@@ -416,7 +427,6 @@ if inp.UserInputType == Enum.UserInputType.MouseButton2 then
 panning = false
 end
 end)
--- ЛКМ по пустому месту карты ставит новую точку на полу
 overlay.MouseButton1Click:Connect(function()
 local mPos = UserInputService:GetMouseLocation()
 local relX = (mPos.X - overlay.AbsolutePosition.X) / overlay.AbsoluteSize.X
@@ -432,7 +442,6 @@ end
 end)
 btnPrevRoom.MouseButton1Click:Connect(function() loadRoomsPair(selectedIdx - 1); redrawOverlays() end)
 btnNextRoom.MouseButton1Click:Connect(function() loadRoomsPair(selectedIdx + 1); redrawOverlays() end)
--- Нижние кнопки быстрых ориентиров (Середина комнаты, Середина ковра, Скрыть точки, Очистить)
 local function makeBtn(text, pos, size, bg, fg, onClick)
 local b = Instance.new("TextButton")
 b.Position = pos
@@ -447,10 +456,9 @@ Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
 b.MouseButton1Click:Connect(onClick)
 return b
 end
--- Ряд 1: Середина комнаты / Середина ковра
 makeBtn("+ СЕРЕДИНА КОМНАТЫ", UDim2.new(0, 14, 1, -118), UDim2.new(0.48, -4, 0, 32),
 Color3.fromRGB(255, 222, 189), Color3.fromRGB(39, 20, 17), function()
-local r = activeRooms
+local r = select(1, unpack(activeRooms))
 local fl = r and r:FindFirstChild("Parts") and r.Parts:FindFirstChild("Floor")
 if fl then
 local fy = fl.Position.Y + fl.Size.Y * 0.5
@@ -460,7 +468,7 @@ end
 end)
 makeBtn("+ СЕРЕДИНА КОВРА (CARPET)", UDim2.new(0.52, 0, 1, -118), UDim2.new(0.48, -14, 0, 32),
 Color3.fromRGB(255, 222, 189), Color3.fromRGB(39, 20, 17), function()
-local r = activeRooms
+local r = select(1, unpack(activeRooms))
 if r then
 for _, d in ipairs(r:GetDescendants()) do
 if d:IsA("BasePart") and d.Name == "Carpet" then
@@ -471,7 +479,6 @@ end
 redrawOverlays()
 end
 end)
--- Ряд 2: Скрыть 3D-шары / Сброс зума
 local hideBtn
 hideBtn = makeBtn(PathfindLib.ShowMarkers and "3D-ШАРЫ В КОМНАТЕ: ВКЛ" or "3D-ШАРЫ В КОМНАТЕ: СКРЫТЫ",
 UDim2.new(0, 14, 1, -80), UDim2.new(0.48, -4, 0, 32),
@@ -484,7 +491,6 @@ Color3.fromRGB(111, 95, 86), Color3.fromRGB(255, 222, 189), function()
 loadRoomsPair(selectedIdx)
 redrawOverlays()
 end)
--- Ряд 3: Удалить последнюю / Очистить все
 makeBtn("УДАЛИТЬ ПОСЛЕДНЮЮ", UDim2.new(0, 14, 1, -42), UDim2.new(0.48, -4, 0, 32),
 Color3.fromRGB(145, 103, 92), Color3.fromRGB(255, 222, 189), function()
 PathfindLib.RemoveNodeAt(#PathfindLib.Nodes)
