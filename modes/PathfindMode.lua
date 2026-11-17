@@ -1,5 +1,5 @@
 -- modes/PathfindMode.lua
--- Движение клона строго по поставленным точкам из PathfindLib
+-- Движение клона строго по точкам из PathfindLib начиная с выбранной StartNodeIndex
 
 return function(API)
     local PathfindLib = API.Import("libs/PathfindLib.lua")
@@ -10,12 +10,9 @@ return function(API)
         Name = "Pathfind",
 
         OnActivate = function()
-            currentIdx = 1
+            currentIdx = math.clamp(PathfindLib.StartNodeIndex or 1, 1, math.max(1, #PathfindLib.Nodes))
             velocity = Vector3.zero
-            if #PathfindLib.Nodes == 0 then
-                PathfindLib.AutoGenerateFromCarpet()
-            end
-            print("[PathfindMode] Старт движения по точкам. Всего точек:", #PathfindLib.Nodes)
+            print("[PathfindMode] Старт маршрута с точки #" .. currentIdx .. " (всего: " .. #PathfindLib.Nodes .. ")")
         end,
 
         OnDeactivate = function()
