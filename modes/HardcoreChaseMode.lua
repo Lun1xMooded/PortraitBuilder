@@ -108,9 +108,8 @@ return function(API)
                     local landedCF = restoreFromRagdoll()
                     restoreFromRagdoll = nil
                     if landedCF then
-                        local floorY = API.GetFloorY(landedCF.Position, landedCF.Position.Y + 5, true)
-                        local flatLook = Vector3.new(myRoot.Position.X, floorY, myRoot.Position.Z)
-                        API.SetCFrame(CFrame.lookAt(Vector3.new(landedCF.X, floorY, landedCF.Z), flatLook))
+                        local flatLook = Vector3.new(myRoot.Position.X, landedCF.Y, myRoot.Position.Z)
+                        API.SetCFrame(CFrame.lookAt(landedCF.Position, flatLook))
                     end
                     graceTimer = GRACE_SECONDS
                     lastCountdownInt = -1
