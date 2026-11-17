@@ -1,5 +1,5 @@
 -- modes/HardcoreChaseMode.lua
--- Хардкорные догонялки [Q] + жёсткий нокаут перчатками BoxingGloves (для клона и игрока)
+-- Хардкорные догонялки [Q]: скорость (WalkSpeed - 3), нокаут 2 сек, медленное подкрадывание во время форы
 
 return function(API)
     local Players = game:GetService("Players")
@@ -20,15 +20,15 @@ return function(API)
     local PUNCH_HIT_RANGE = 10.0
     local RETREAT_DISTANCE = 12
     local GRACE_SECONDS = 5.0
-    local RAGDOLL_SECONDS = 2.4
+    local RAGDOLL_SECONDS = 2.0 -- Задержка нокаута ровно 2 секунды
+    local CREEP_SPEED = 3.5     -- Медленное подкрадывание во время форы
 
     local function triggerKill(myChar, clonePos)
         if killTriggered then return end
         killTriggered = true
         print("[HardcoreChase] НОКАУТ ИГРОКА! Смертельный удар.")
 
-        -- Жёстко отбрасываем игрока назад в полёт
-        CombatLib.KnockbackPlayer(clonePos, 95)
+        CombatLib.KnockbackPlayer(clonePos, 85)
 
         local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
         if hum then
@@ -48,11 +48,11 @@ return function(API)
 
         local toClone = (cloneCF.Position - myRoot.Position) * Vector3.new(1, 0, 1)
         if toClone.Magnitude <= PUNCH_HIT_RANGE then
-            print("[HardcoreChase] ЖЁСТКИЙ НОКАУТ ПЕРЧАТКАМИ! Клон улетает в рэгдолл + фора 5 сек!")
+            print("[HardcoreChase] НОКАУТ! Рэгдолл 2 сек -> фора 5 сек!")
             API.UpdateAnimation(0, false)
             velocity = Vector3.zero
             ragdollTimer = RAGDOLL_SECONDS
-            restoreFromRagdoll = CombatLib.ApplyRagdoll(clone, toClone.Unit, 92)
+            restoreFromRagdoll = CombatLib.ApplyRagdoll(clone, toClone.Unit, 55)
         end
     end
 
@@ -72,7 +72,7 @@ return function(API)
             if punchDisconnect then punchDisconnect() end
             punchDisconnect = CombatLib.BindPlayerPunch(onPlayerBoxingPunch)
 
-            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 5. Бей BoxingGloves для жёсткого нокаута!")
+            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 3 (12 при 15).")
         end,
 
         OnDeactivate = function()
@@ -101,7 +101,7 @@ return function(API)
                 return
             end
 
-            -- 0. КЛОН В ПОЛЁТЕ / РЭГДОЛЛЕ ПОСЛЕ НОКАУТА
+            -- 0. РЭГДОЛЛ 2 СЕКУНДЫ ПОСЛЕ НОКАУТА
             if ragdollTimer > 0 then
                 ragdollTimer = math.max(0, ragdollTimer - dt)
                 if ragdollTimer <= 0 and restoreFromRagdoll then
@@ -113,7 +113,7 @@ return function(API)
                     end
                     graceTimer = GRACE_SECONDS
                     lastCountdownInt = -1
-                    print("[HardcoreChase] Клон встаёт после нокаута! Фора 5 секунд...")
+                    print("[HardcoreChase] Клон встал! Фора 5 секунд (медленно подкрадывается)...")
                 end
                 return
             end
@@ -145,32 +145,43 @@ return function(API)
                 return
             end
 
-            -- 2. ФОРА 5 СЕКУНД ПОСЛЕ ВЫХОДА ИЗ ШКАФА
+            -- 2. ФОРА 5 СЕКУНД (клон потихоньку крадётся к тебе, а потом резко разгоняется!)
             if wasHiding then
                 wasHiding = false
                 graceTimer = GRACE_SECONDS
                 velocity = Vector3.zero
-                API.UpdateAnimation(0, false)
+                lastCountdownInt = -1
                 print("[HardcoreChase] Ты вышел из укрытия! Фора 5 секунд...")
             end
 
             if graceTimer > 0 then
                 graceTimer = math.max(0, graceTimer - dt)
-                API.UpdateAnimation(0, false)
-                local lookTarget = Vector3.new(myRoot.Position.X, cloneCFrame.Position.Y, myRoot.Position.Z)
-                API.SetCFrame(cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 4, 0, 1)))
+
+                if dist > KILL_DISTANCE + 1.0 then
+                    velocity = velocity:Lerp(dirToPlayer * CREEP_SPEED, math.clamp(dt * 6, 0, 1))
+                    API.UpdateAnimation(velocity.Magnitude, false)
+                    local nextPos = cloneCFrame.Position + velocity * dt
+                    local floorY = API.GetFloorY(nextPos, refY, false)
+                    local lookAtPos = Vector3.new(nextPos.X + velocity.X, floorY, nextPos.Z + velocity.Z)
+                    API.SetCFrame(CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), lookAtPos))
+                else
+                    API.UpdateAnimation(0, false)
+                end
 
                 local secLeft = math.ceil(graceTimer)
                 if secLeft ~= lastCountdownInt and secLeft > 0 then
                     lastCountdownInt = secLeft
                     print("[HardcoreChase] Фора:", secLeft .. " сек...")
                 end
+                if graceTimer <= 0 then
+                    print("[HardcoreChase] Фора закончилась! Возврат на полную скорость!")
+                end
                 return
             end
 
-            -- 3. АКТИВНАЯ ХАРДКОРНАЯ ПОГОНЯ
+            -- 3. АКТИВНАЯ ХАРДКОРНАЯ ПОГОНЯ (Скорость = WalkSpeed игрока - 3, т.е. 12 при 15)
             local playerWalkSpeed = hum.WalkSpeed or 15
-            local cloneSpeed = math.max(3, playerWalkSpeed - 5)
+            local cloneSpeed = math.max(4, playerWalkSpeed - 3)
 
             if dist <= KILL_DISTANCE then
                 comboIdx = CombatLib.PlayCloneSwing(API.GetClone(), comboIdx)

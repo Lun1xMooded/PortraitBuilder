@@ -1,5 +1,5 @@
 -- libs/CombatLib.lua
--- Контролируемый жёсткий нокаут с рэгдоллом, защитой от вылета за стены/потолок и авто-возвратом в комнату
+-- Физический рэгдолл с коллизией всех конечностей о пол + удар BoxingGloves
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,7 +12,7 @@ local SWING_IDS = {
     "rbxassetid://98472295325859",  -- swing2
 }
 
--- 1. Удар клона перчатками (перекрывает idle-стойку инструмента)
+-- 1. Удар клона перчатками
 function CombatLib.PlayCloneSwing(clone, comboIndex)
     if not clone then return 1 end
     local hum = clone:FindFirstChildOfClass("Humanoid")
@@ -37,7 +37,7 @@ function CombatLib.PlayCloneSwing(clone, comboIndex)
     return (idx == 1) and 2 or 1
 end
 
--- 2. Жёсткий нокаут и отлёт локального игрока назад
+-- 2. Отбрасывание игрока при нокауте
 function CombatLib.KnockbackPlayer(fromPos, power)
     local char = LocalPlayer.Character
     if not char then return end
@@ -73,18 +73,22 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     end)
 end
 
--- 3. Нокаут клона с рэгдоллом: эффектный отлёт внутри комнаты без вылета за карту
+-- 3. Физический рэгдолл клона: все руки, ноги и голова имеют CanCollide = true и лежат на полу
 function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
-    local startSafeCF = root.CFrame
-    local lastValidFloorPos = startSafeCF.Position
-
+    local startSafePos = root.Position
     local savedMotors = {}
     local tempRagdoll = {}
 
+    local hum = clone:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.PlatformStand = true
+    end
+
+    -- Заменяем суставы на BallSocketConstraint с ограничениями углов
     for _, desc in ipairs(clone:GetDescendants()) do
         if desc:IsA("Motor6D") and desc.Part0 and desc.Part1 and desc.Name ~= "Handle" and desc.Name ~= "LeftHandle" then
             local a0 = Instance.new("Attachment")
@@ -100,9 +104,9 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
             socket.Attachment1 = a1
             socket.LimitsEnabled = true
             socket.TwistLimitsEnabled = true
-            socket.UpperAngle = 60
-            socket.TwistLowerAngle = -45
-            socket.TwistUpperAngle = 45
+            socket.UpperAngle = 55
+            socket.TwistLowerAngle = -40
+            socket.TwistUpperAngle = 40
             socket.Parent = desc.Part0
 
             table.insert(savedMotors, { motor = desc, parent = desc.Parent })
@@ -114,13 +118,28 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         end
     end
 
+    -- Включаем физику и коллизию о пол ДЛЯ ВСЕХ конечностей (кроме аксессуаров/инструментов)
     for _, part in ipairs(clone:GetDescendants()) do
-        if part:IsA("BasePart") and part ~= root then
+        if part:IsA("BasePart") then
             part.Anchored = false
-            part.CanCollide = false
+            part.Massless = false
+            pcall(function() part.CollisionGroup = "NoPlayer" end)
+            if not part:FindFirstAncestorOfClass("Tool") and not part:FindFirstAncestorOfClass("Accessory") then
+                part.CanCollide = true
+            end
         end
     end
 
+    local dir = (knockbackDir * Vector3.new(1, 0, 1))
+    dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
+
+    local clampedPower = math.clamp(power or 55, 35, 65)
+    local impulse = dir * clampedPower + Vector3.new(0, 28, 0)
+
+    root.AssemblyLinearVelocity = impulse
+    root.AssemblyAngularVelocity = Vector3.new(math.random(-8, 8), math.random(-5, 5), math.random(-8, 8))
+
+    -- Страховка от вылета за пределы карты во время полёта
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
     rp.RespectCanCollide = true
@@ -130,87 +149,19 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     end
     rp.FilterDescendantsInstances = ignoreList
 
-    root.Anchored = true
-    local dir = (knockbackDir * Vector3.new(1, 0, 1))
-    dir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
-
-    -- Сбалансированная мощь нокаута: клон красиво отлетает на 12-16 стадов и кувыркается, не пробивая стены
-    local clampedPower = math.clamp(power or 58, 35, 65)
-    local vel = dir * clampedPower + Vector3.new(0, 26, 0)
-    local pitchRotSpeed = math.rad(-380)
-    local curCF = root.CFrame
-    local flying = true
-    local hitWallCount = 0
-
-    local flyConn = RunService.RenderStepped:Connect(function(dt)
-        if not flying or not root or not root.Parent then return end
-        local stepDt = math.min(dt, 0.033)
-
-        vel = vel + Vector3.new(0, -78 * stepDt, 0)
-        local moveDelta = vel * stepDt
-
-        -- 1. Проверка потолка (чтобы апперкот не выбрасывал клона на крышу комнаты)
-        if vel.Y > 0 then
-            local ceilHit = workspace:Raycast(curCF.Position, Vector3.new(0, moveDelta.Y + 3.5, 0), rp)
-            if ceilHit then
-                vel = Vector3.new(vel.X * 0.6, -math.abs(vel.Y) * 0.3, vel.Z * 0.6)
-                moveDelta = vel * stepDt
-            end
+    local guardConn = RunService.Heartbeat:Connect(function()
+        if not root or not root.Parent then return end
+        if (root.Position - startSafePos).Magnitude > 35 or root.Position.Y < startSafePos.Y - 18 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.CFrame = CFrame.new(startSafePos + Vector3.new(0, 2, 0))
         end
-
-        -- 2. Объёмная проверка стен (Blockcast 2x3x2), чтобы не пролетал сквозь тонкие стены и двери DOORS
-        local flatMove = Vector3.new(moveDelta.X, 0, moveDelta.Z)
-        if flatMove.Magnitude > 0.005 then
-            local wallHit = workspace:Blockcast(
-                CFrame.new(curCF.Position + Vector3.new(0, 0.5, 0)),
-                Vector3.new(2.2, 3.0, 2.2),
-                flatMove.Unit * (flatMove.Magnitude + 1.8),
-                rp
-            )
-            if wallHit then
-                hitWallCount = hitWallCount + 1
-                local n = wallHit.Normal * Vector3.new(1, 0, 1)
-                if n.Magnitude > 0.01 then n = n.Unit else n = -flatMove.Unit end
-                -- Отскакиваем от стены внутрь комнаты и гасим скорость
-                vel = (vel - 2 * vel:Dot(n) * n) * 0.35
-                if hitWallCount >= 2 then
-                    vel = Vector3.new(0, vel.Y, 0)
-                end
-                moveDelta = vel * stepDt
-            end
-        end
-
-        local nextPos = curCF.Position + moveDelta
-
-        -- 3. Поиск пола strictly под текущим уровнем комнаты (от +6 стадов над клоном до -25 вниз)
-        local floorHit = workspace:Raycast(Vector3.new(nextPos.X, nextPos.Y + 6, nextPos.Z), Vector3.new(0, -31, 0), rp)
-        if floorHit then
-            local floorY = floorHit.Position.Y + 1.1
-            lastValidFloorPos = Vector3.new(nextPos.X, floorY, nextPos.Z)
-
-            if nextPos.Y <= floorY and vel.Y <= 0 then
-                nextPos = Vector3.new(nextPos.X, floorY, nextPos.Z)
-                if vel.Y < -14 then
-                    vel = Vector3.new(vel.X * 0.55, -vel.Y * 0.22, vel.Z * 0.55)
-                else
-                    vel = Vector3.new(vel.X * 0.78, 0, vel.Z * 0.78)
-                    pitchRotSpeed = pitchRotSpeed * 0.7
-                end
-            end
-        else
-            -- Если впереди пропасть/пустота за пределами карты — тормозим горизонтальный полёт
-            vel = Vector3.new(0, vel.Y, 0)
-            nextPos = Vector3.new(curCF.Position.X, math.max(nextPos.Y, lastValidFloorPos.Y), curCF.Position.Z)
-        end
-
-        curCF = CFrame.new(nextPos) * curCF.Rotation * CFrame.Angles(pitchRotSpeed * stepDt, 0, 0)
-        root.CFrame = curCF
     end)
 
     return function()
-        flying = false
-        if flyConn then flyConn:Disconnect() end
+        if guardConn then guardConn:Disconnect() end
         if not clone or not clone.Parent then return nil end
+
+        local landedPos = root.Position
 
         for _, inst in ipairs(tempRagdoll) do
             if inst and inst.Parent then inst:Destroy() end
@@ -219,29 +170,33 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         for _, part in ipairs(clone:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
+                part.Massless = true
                 part.AssemblyLinearVelocity = Vector3.zero
                 part.AssemblyAngularVelocity = Vector3.zero
             end
         end
 
         root.Anchored = true
+        if hum then
+            hum.PlatformStand = false
+        end
+
         for _, mInfo in ipairs(savedMotors) do
             if mInfo.motor and mInfo.parent then
                 mInfo.motor.Parent = mInfo.parent
             end
         end
 
-        -- Финальная проверка, что точка приземления находится на полу в комнате, а не под картой
-        local checkHit = workspace:Raycast(Vector3.new(curCF.Position.X, curCF.Position.Y + 8, curCF.Position.Z), Vector3.new(0, -30, 0), rp)
+        local checkHit = workspace:Raycast(Vector3.new(landedPos.X, landedPos.Y + 8, landedPos.Z), Vector3.new(0, -35, 0), rp)
         if checkHit then
-            return CFrame.new(curCF.Position.X, checkHit.Position.Y + 3.6, curCF.Position.Z)
+            return CFrame.new(landedPos.X, checkHit.Position.Y + 3.6, landedPos.Z)
         else
-            return CFrame.new(lastValidFloorPos.X, lastValidFloorPos.Y + 2.5, lastValidFloorPos.Z)
+            return CFrame.new(startSafePos.X, startSafePos.Y, startSafePos.Z)
         end
     end
 end
 
--- 4. Отслеживает удар игрока (OnCooldown на BoxingGloves)
+-- 4. Отслеживание удара BoxingGloves локального игрока
 function CombatLib.BindPlayerPunch(onPunchCallback)
     local activeToolConn = nil
     local charAddedConn = nil
@@ -261,25 +216,29 @@ function CombatLib.BindPlayerPunch(onPunchCallback)
             activeToolConn = nil
         end
         if tool and tool:IsA("Tool") and tool.Name == "BoxingGloves" then
-activeToolConn = tool:GetAttributeChangedSignal("OnCooldown"):Connect(function()
-if tool:GetAttribute("OnCooldown") == true then
-trigger()
+            activeToolConn = tool:GetAttributeChangedSignal("OnCooldown"):Connect(function()
+                if tool:GetAttribute("OnCooldown") == true then
+                    trigger()
+                end
+            end)
+        end
+    end
+
+    local function hookChar(char)
+        if childAddedConn then childAddedConn:Disconnect() end
+        if not char then return end
+        hookTool(char:FindFirstChildOfClass("Tool"))
+        childAddedConn = char.ChildAdded:Connect(hookTool)
+    end
+
+    hookChar(LocalPlayer.Character)
+    charAddedConn = LocalPlayer.CharacterAdded:Connect(hookChar)
+
+    return function()
+        if activeToolConn then activeToolConn:Disconnect() end
+        if childAddedConn then childAddedConn:Disconnect() end
+        if charAddedConn then charAddedConn:Disconnect() end
+    end
 end
-end)
-end
-end
-local function hookChar(char)
-if childAddedConn then childAddedConn:Disconnect() end
-if not char then return end
-hookTool(char:FindFirstChildOfClass("Tool"))
-childAddedConn = char.ChildAdded:Connect(hookTool)
-end
-hookChar(LocalPlayer.Character)
-charAddedConn = LocalPlayer.CharacterAdded:Connect(hookChar)
-return function()
-if activeToolConn then activeToolConn:Disconnect() end
-if childAddedConn then childAddedConn:Disconnect() end
-if charAddedConn then charAddedConn:Disconnect() end
-end
-end
+
 return CombatLib
