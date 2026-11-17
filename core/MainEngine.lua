@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.8 — Registry-Driven DOORS Menu + Full Combat)
+-- core/MainEngine.lua (Pure Modular Core v0.8.1 — Syntax Fixed + Registry DOORS Menu)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -194,7 +194,7 @@ return function(Import, Config)
             activeMode, activeSub = nil, nil
         end
 
-        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
         local srcChar = LocalPlayer.Character
         local clone = nil
 
@@ -227,7 +227,8 @@ return function(Import, Config)
         end
 
         local isPortraitType = (actorInfo.Type == "Portrait")
-RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
+        RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
+
 local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
 rootOffset = isPortraitType and 3.65 or 3.55
 if sCF then
@@ -340,9 +341,6 @@ for _, m in ipairs(Registry.ModeModules) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(ModeAPI) end
 end
--- =========================================================================
--- АВТОМАТИЧЕСКАЯ СБОРКА МЕНЮ DOORS ИЗ Registry.MenuCategories
--- =========================================================================
 local ActionHandlers = {
 SpawnFar = function() spawnClone(Config.SpawnDistanceFar, false) end,
 SpawnHere = function() spawnAtPlayer() end,
