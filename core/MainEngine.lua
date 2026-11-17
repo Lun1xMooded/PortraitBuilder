@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.9 — Compact + MenuController)
+-- core/MainEngine.lua (Pure Modular Core v0.9.1 — UI Folder Integration)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -15,7 +15,6 @@ return function(Import, Config)
     local EffectsLib     = Import("libs/EffectsLib.lua")
     local RigLib         = Import("libs/RigLib.lua")
     local CombatLib      = Import("libs/CombatLib.lua")
-    local DoorsMenuLib   = Import("libs/DoorsMenuLib.lua")
 
     if not Registry or not MirrorLib or not EffectsLib or not RigLib or not CombatLib then
         warn("[MemeActor] Ошибка загрузки библиотек!")
@@ -157,7 +156,7 @@ return function(Import, Config)
         if not multiCloneMode then removeAllClones()
         elseif activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate(); activeMode, activeSub = nil, nil end
 
-        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
         local srcChar, clone = LocalPlayer.Character, nil
 
         if actorInfo.Type == "CustomBuilder" and actorInfo.Path then
@@ -197,8 +196,8 @@ return function(Import, Config)
         end
         if root then root.CFrame = cloneCF end
 
-tracks = RigLib.SetupAnimations(clone, srcChar)
-table.insert(allClones, {
+        tracks = RigLib.SetupAnimations(clone, srcChar)
+        table.insert(allClones, {
 model = clone, cframe = cloneCF, head = headPart, neck = neckMotor,
 jitter = EffectsLib.CacheJitterParts(clone), tracks = tracks, isRagdoll = false
 })
@@ -282,8 +281,8 @@ for _, m in ipairs(Registry.ModeModules) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(ModeAPI) end
 end
-if MenuController and DoorsMenuLib then
-UIWindow, UIToggles = MenuController.Build(DoorsMenuLib, Registry, {
+if MenuController then
+UIWindow, UIToggles = MenuController.Build(Import, Registry, {
 Actions = {
 SpawnFar = function() spawnClone(Config.SpawnDistanceFar, false) end,
 SpawnHere = spawnAtPlayer,

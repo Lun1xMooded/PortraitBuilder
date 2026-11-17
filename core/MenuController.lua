@@ -1,15 +1,17 @@
 -- core/MenuController.lua
--- Контроллер сборки меню DOORS из Registry.MenuCategories
+-- Контроллер сборки меню из папки ui/ и Registry.MenuCategories
 
 local MenuController = {}
 
-function MenuController.Build(DoorsMenuLib, Registry, Context)
-    if not DoorsMenuLib or not Registry or not Registry.MenuCategories then
+function MenuController.Build(Import, Registry, Context)
+    local Theme   = Import("ui/DoorsTheme.lua")
+    local Builder = Import("ui/DoorsGuiBuilder.lua")
+    if not Theme or not Builder or not Registry or not Registry.MenuCategories then
         return nil, {}
     end
 
     local toggles = {}
-    local uiWindow = DoorsMenuLib.CreateWindow("MEME ACTOR PANEL", "[ [ / ] ] Меню")
+    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "[ [ / ] ] Меню")
 
     for _, catData in ipairs(Registry.MenuCategories) do
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
