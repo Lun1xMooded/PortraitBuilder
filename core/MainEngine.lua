@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.7.1 — Global BoxingGloves Knockback + Action4 Punch)
+-- core/MainEngine.lua (Pure Modular Core v0.8 — Registry-Driven DOORS Menu + Full Combat)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -11,13 +11,15 @@ return function(Import, Config)
     end
     ENV.GardenVisibilityPatch = true
 
-    local Registry   = Import("core/Registry.lua")
-    local MirrorLib  = Import("libs/MirrorLib.lua")
-    local EffectsLib = Import("libs/EffectsLib.lua")
-    local RigLib     = Import("libs/RigLib.lua")
-    local CombatLib  = Import("libs/CombatLib.lua")
+    local Registry     = Import("core/Registry.lua")
+    local MirrorLib    = Import("libs/MirrorLib.lua")
+    local EffectsLib   = Import("libs/EffectsLib.lua")
+    local RigLib       = Import("libs/RigLib.lua")
+    local CombatLib    = Import("libs/CombatLib.lua")
+    local DoorsMenuLib = Import("libs/DoorsMenuLib.lua")
+
     if not Registry or not MirrorLib or not EffectsLib or not RigLib or not CombatLib then
-        warn("[MemeActor] Не удалось загрузить библиотеки из core/ или libs/!")
+        warn("[MemeActor] Не удалось загрузить основные библиотеки из core/ или libs/!")
         return
     end
 
@@ -47,6 +49,8 @@ return function(Import, Config)
     local tracks = {}
     local cachedToolSyncs = {}
     local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
+    local UIWindow = nil
+    local UIToggles = {}
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
@@ -99,6 +103,7 @@ return function(Import, Config)
 
     local function setCrouch(state)
         isCrouching = state
+        if UIToggles.Crouch then UIToggles.Crouch.Set(isCrouching, true) end
         for _, entry in ipairs(allClones) do
             local tr = entry.tracks and entry.tracks.crouch
             if tr then
@@ -222,11 +227,9 @@ return function(Import, Config)
         end
 
         local isPortraitType = (actorInfo.Type == "Portrait")
-        RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
-
-        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-        rootOffset = isPortraitType and 3.65 or 3.55
-
+RigLib.AttachTool(clone, false, isPortraitType, MirrorLib, cachedToolSyncs)
+local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+rootOffset = isPortraitType and 3.65 or 3.55
 if sCF then
 local groundY = getFloorY(sCF.Position, sCF.Position.Y, true)
 cloneCF = CFrame.new(sCF.X, groundY, sCF.Z) * sCF.Rotation
@@ -266,7 +269,20 @@ if myChar:GetAttribute("Crouching") == true then
 setCrouch(true)
 end
 end
--- Глобальный обработчик твоего удара BoxingGloves по стоящим клонам (когда НЕ включён HardcoreChaseMode)
+local function doClonePunch()
+if not activeClone then return end
+local cloneTool = activeClone:FindFirstChildOfClass("Tool")
+local myTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+if (not cloneTool or cloneTool.Name ~= "BoxingGloves") and myTool and myTool.Name == "BoxingGloves" then
+local curInfo = ACTOR_LIST[modeIdx]
+local isPort = curInfo and (curInfo.Type == "Portrait")
+RigLib.AttachTool(activeClone, false, isPort, MirrorLib, cachedToolSyncs)
+RigLib.PlayToolTrack(activeClone, tracks, false)
+updateToolDrivers()
+task.wait(0.18)
+end
+comboIdx = CombatLib.PlayCloneSwing(activeClone, comboIdx)
+end
 local globalPunchDisconnect = CombatLib.BindPlayerPunch(function()
 if activeMode and activeMode.Name == "HardcoreChase" then return end
 local myChar = LocalPlayer.Character
@@ -275,16 +291,14 @@ if not myRoot then return end
 for _, entry in ipairs(allClones) do
 if entry.model and entry.model.Parent and not entry.isRagdoll and entry.cframe then
 local toClone = (entry.cframe.Position - myRoot.Position) * Vector3.new(1, 0, 1)
-if toClone.Magnitude <= 10 then
+if toClone.Magnitude <= 10.0 then
 entry.isRagdoll = true
-print("[MemeActor] Удар перчатками по манекену! Рэгдолл на 2.2 сек.")
-local restoreFn = CombatLib.ApplyRagdoll(entry.model, toClone.Unit, 92)
-task.delay(2.2, function()
+local restoreFn = CombatLib.ApplyRagdoll(entry.model, toClone.Unit, 45)
+task.delay(2.0, function()
 if restoreFn and entry.model and entry.model.Parent then
 local landedCF = restoreFn()
 if landedCF then
-local fy = getFloorY(landedCF.Position, myRoot.Position.Y, true)
-local newCF = CFrame.lookAt(Vector3.new(landedCF.X, fy, landedCF.Z), Vector3.new(myRoot.Position.X, fy, myRoot.Position.Z))
+local newCF = CFrame.lookAt(landedCF.Position, Vector3.new(myRoot.Position.X, landedCF.Y, myRoot.Position.Z))
 entry.cframe = newCF
 if entry.model == activeClone then cloneCF = newCF end
 local r = entry.model.PrimaryPart or entry.model:FindFirstChild("HumanoidRootPart")
@@ -326,6 +340,80 @@ for _, m in ipairs(Registry.ModeModules) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(ModeAPI) end
 end
+-- =========================================================================
+-- АВТОМАТИЧЕСКАЯ СБОРКА МЕНЮ DOORS ИЗ Registry.MenuCategories
+-- =========================================================================
+local ActionHandlers = {
+SpawnFar = function() spawnClone(Config.SpawnDistanceFar, false) end,
+SpawnHere = function() spawnAtPlayer() end,
+SwitchActor = function()
+modeIdx = (modeIdx % #ACTOR_LIST) + 1
+print("[MemeActor] Выбран облик:", ACTOR_LIST[modeIdx].Label)
+if activeClone and not multiCloneMode then spawnClone(Config.SpawnDistanceFar, true) end
+end,
+Rotate = function()
+faceCam = not faceCam
+if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
+end,
+RemoveAll = function() removeAllClones() end,
+Punch = function() task.spawn(doClonePunch) end,
+}
+local StateHandlers = {
+MultiClone = {
+get = function() return multiCloneMode end,
+set = function(v) multiCloneMode = v end
+},
+Crouch = {
+get = function() return isCrouching end,
+set = function(v)
+if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end
+setCrouch(v)
+end
+},
+HeadLook = {
+get = function() return headLookOn end,
+set = function(v)
+headLookOn = v
+for _, entry in ipairs(allClones) do entry.neckCF = nil end
+end
+},
+Jitter = {
+get = function() return jitterOn end,
+set = function(v)
+jitterOn = v
+if not jitterOn then
+for _, entry in ipairs(allClones) do EffectsLib.ResetJitter(entry.jitter) end
+end
+end
+},
+}
+if DoorsMenuLib and Registry.MenuCategories then
+UIWindow = DoorsMenuLib.CreateWindow("MEME ACTOR PANEL", "[ [ / ] ] Меню")
+for _, catData in ipairs(Registry.MenuCategories) do
+local catTab = UIWindow:AddCategory(catData.Title, catData.Icon)
+for _, item in ipairs(catData.Items) do
+if item.Type == "Section" then
+catTab:AddSection(item.Text)
+elseif item.Type == "Button" then
+catTab:AddButton(item.Text, item.ButtonText, function()
+if item.Action and ActionHandlers[item.Action] then
+ActionHandlersitem.Action
+elseif item.ModeId and LoadedModes[item.ModeId] then
+if not activeClone then
+spawnClone((item.AutoSpawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false)
+end
+setMode(LoadedModes[item.ModeId], item.SubMode)
+end
+end, item.Color)
+elseif item.Type == "Toggle" and item.StateKey and StateHandlers[item.StateKey] then
+local st = StateHandlers[item.StateKey]
+UIToggles[item.StateKey] = catTab:AddToggle(item.Text, st.get(), function(val)
+st.set(val)
+end)
+end
+end
+end
+end
 local K = {}
 for name, info in pairs(Registry.SystemKeys) do K[name] = resolveKey(info) end
 local Binds = {}
@@ -335,13 +423,18 @@ end
 local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
 if gp or UserInputService:GetFocusedTextBox() then return end
 local key = inp.KeyCode
+if key == Enum.KeyCode.RightBracket or key == Enum.KeyCode.LeftBracket then
+if UIWindow then UIWindow:Toggle() end
+return
+end
 if key == K.Spawn then
 spawnClone(Config.SpawnDistanceFar, false)
 elseif key == K.SpawnHere then
 spawnAtPlayer()
 elseif key == K.MultiToggle then
 multiCloneMode = not multiCloneMode
-print("[MemeActor] Режим толпы клонов [U]:", multiCloneMode and "ВКЛ (клоны не удаляются при новом спавне)" or "ВЫКЛ (одиночный клон)")
+if UIToggles.MultiClone then UIToggles.MultiClone.Set(multiCloneMode, true) end
+print("[MemeActor] Режим толпы клонов [U]:", multiCloneMode and "ВКЛ" or "ВЫКЛ")
 elseif key == K.SwitchActor then
 local onlyPortraits = UserInputService:IsKeyDown(K.Spawn)
 for _ = 1, #ACTOR_LIST do
@@ -360,25 +453,20 @@ if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end
 setCrouch(not isCrouching)
 elseif key == K.JitterToggle then
 jitterOn = not jitterOn
+if UIToggles.Jitter then UIToggles.Jitter.Set(jitterOn, true) end
 if not jitterOn then
 for _, entry in ipairs(allClones) do EffectsLib.ResetJitter(entry.jitter) end
 end
 elseif key == K.HeadLook then
 headLookOn = not headLookOn
+if UIToggles.HeadLook then UIToggles.HeadLook.Set(headLookOn, true) end
 for _, entry in ipairs(allClones) do entry.neckCF = nil end
 print("[MemeActor] HeadLook 360°:", headLookOn and "ВКЛ" or "ВЫКЛ")
 elseif key == K.Rotate then
 faceCam = not faceCam
 if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
-elseif key == K.PunchAction and activeClone then
-local cloneTool = activeClone:FindFirstChildOfClass("Tool")
-local myTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-if (not cloneTool or cloneTool.Name ~= "BoxingGloves") and myTool and myTool.Name == "BoxingGloves" then
-ModeAPI.AttachTool(false, false)
-task.wait(0.18)
-end
-comboIdx = CombatLib.PlayCloneSwing(activeClone, comboIdx)
-print("[MemeActor] Удар BoxingGloves (Action4)!")
+elseif key == K.PunchAction then
+task.spawn(doClonePunch)
 elseif key == K.Remove then
 removeAllClones()
 print("[MemeActor] Все клоны удалены.")
@@ -416,14 +504,13 @@ if activeMode and activeMode.OnStepped then activeMode.OnStepped(dt) end
 updateToolDrivers()
 if headLookOn then
 for _, entry in ipairs(allClones) do
-if entry.model and entry.model.Parent and not entry.isRagdoll then
+if entry.model and entry.model.Parent and not entry.isRagdoll and not entry.model:GetAttribute("IsRagdoll") then
 solveHeadLookForEntry(entry, dt)
 end
 end
 end
-        for _, entry in ipairs(allClones) do
-            if entry.model and not entry.isRagdoll and not entry.model:GetAttribute("IsRagdoll") then
-
+for _, entry in ipairs(allClones) do
+if entry.model and not entry.isRagdoll and not entry.model:GetAttribute("IsRagdoll") then
 for _, part in ipairs(entry.model:GetDescendants()) do
 if part:IsA("BasePart") and part.CanCollide then
 part.CanCollide = false
@@ -434,6 +521,7 @@ end
 end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
+if UIWindow and UIWindow.Gui then UIWindow.Gui:Destroy() end
 if globalPunchDisconnect then globalPunchDisconnect() end
 removeAllClones()
 if inputConn then inputConn:Disconnect() end
