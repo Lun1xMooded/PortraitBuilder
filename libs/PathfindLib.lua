@@ -277,7 +277,7 @@ function PathfindLib.OpenLayoutMap()
 
     local function updateCamera()
         local dist = (zoomSpan * 0.5) / math.tan(math.rad(0.5))
-        local target = baseCenter + camOffset
+local target = baseCenter + camOffset
 vpCam.CFrame = CFrame.lookAt(target + Vector3.new(0, dist, 0), target, Vector3.new(0, 0, -1))
 end
 local function loadRoomsPair(idx)
@@ -509,4 +509,5 @@ if acc >= 0.12 then acc = 0; redrawOverlays() end
 end)
 task.defer(redrawOverlays)
 end
+getgenv().MemePathfindLib = PathfindLib
 return PathfindLib

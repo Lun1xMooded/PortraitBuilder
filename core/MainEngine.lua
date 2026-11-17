@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v1.0.1 — PathMarkers Toggle Sync)
+-- core/MainEngine.lua (Pure Modular Core v1.0.2 — Pathfind StartNode Spawn)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -297,13 +297,14 @@ if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, mat
 end,
 RemoveAll = removeAllClones,
 Punch = function() task.spawn(doClonePunch) end,
-OpenRoomMap = function() if PathfindLib then PathfindLib.OpenLayoutMap() end end,
+OpenRoomMap = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.OpenLayoutMap() end end,
 AddNodeHere = function()
+local pf = getgenv().MemePathfindLib or PathfindLib
 local myR = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
-if myR and PathfindLib then PathfindLib.AddNode(myR.Position - Vector3.new(0, 2.5, 0)) end
+if myR and pf then pf.AddNode(myR.Position - Vector3.new(0, 2.5, 0)) end
 end,
-AutoCarpet = function() if PathfindLib then PathfindLib.AutoGenerateFromCarpet() end end,
-ClearNodes = function() if PathfindLib then PathfindLib.ClearNodes() end end,
+AutoCarpet = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.AutoGenerateFromCarpet() end end,
+ClearNodes = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.ClearNodes() end end,
 },
 States = {
 MultiClone  = { get = function() return multiCloneMode end, set = function(v) multiCloneMode = v end },
@@ -311,13 +312,22 @@ Crouch      = { get = function() return isCrouching end, set = function(v) if no
 HeadLook    = { get = function() return headLookOn end, set = function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end },
 Jitter      = { get = function() return jitterOn end, set = function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end },
 Freecam     = { get = function() return FreecamLib and FreecamLib.Enabled or false end, set = function(v) if FreecamLib then FreecamLib.SetEnabled(v) end end },
-PathMarkers = { get = function() return PathfindLib and PathfindLib.ShowMarkers or false end, set = function(v) if PathfindLib then PathfindLib.SetMarkersVisible(v) end end },
-PathLoop    = { get = function() return PathfindLib and PathfindLib.LoopPath or false end, set = function(v) if PathfindLib then PathfindLib.LoopPath = v end end },
-PathSprint  = { get = function() return PathfindLib and PathfindLib.SprintPath or false end, set = function(v) if PathfindLib then PathfindLib.SprintPath = v end end },
+PathMarkers = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.ShowMarkers or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.SetMarkersVisible(v) end end },
+PathLoop    = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.LoopPath or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.LoopPath = v end end },
+PathSprint  = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.SprintPath or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.SprintPath = v end end },
 },
 RunMode = function(mId, sub, autoSpawn)
 if not LoadedModes[mId] then return end
-if not activeClone then spawnClone((autoSpawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false) end
+local pf = getgenv().MemePathfindLib or PathfindLib
+if mId == "Pathfind" and pf and #pf.Nodes > 0 then
+local sIdx = math.clamp(pf.StartNodeIndex or 1, 1, #pf.Nodes)
+local sPos = pf.Nodes[sIdx]
+if not activeClone then
+spawnClone(0, false, CFrame.new(sPos + Vector3.new(0, 3.6, 0)))
+end
+elseif not activeClone then
+spawnClone((autoSpawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false)
+end
 setMode(LoadedModes[mId], sub)
 end
 })
