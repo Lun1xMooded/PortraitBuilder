@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v0.9.1 — UI Folder Integration)
+-- core/MainEngine.lua (Pure Modular Core v1.0 — Freecam + PathfindNodes + DoorsMenu)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -15,6 +15,8 @@ return function(Import, Config)
     local EffectsLib     = Import("libs/EffectsLib.lua")
     local RigLib         = Import("libs/RigLib.lua")
     local CombatLib      = Import("libs/CombatLib.lua")
+    local FreecamLib     = Import("libs/FreecamLib.lua")
+    local PathfindLib    = Import("libs/PathfindLib.lua")
 
     if not Registry or not MirrorLib or not EffectsLib or not RigLib or not CombatLib then
         warn("[MemeActor] Ошибка загрузки библиотек!")
@@ -196,8 +198,8 @@ return function(Import, Config)
         end
         if root then root.CFrame = cloneCF end
 
-        tracks = RigLib.SetupAnimations(clone, srcChar)
-        table.insert(allClones, {
+tracks = RigLib.SetupAnimations(clone, srcChar)
+table.insert(allClones, {
 model = clone, cframe = cloneCF, head = headPart, neck = neckMotor,
 jitter = EffectsLib.CacheJitterParts(clone), tracks = tracks, isRagdoll = false
 })
@@ -296,12 +298,22 @@ if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, mat
 end,
 RemoveAll = removeAllClones,
 Punch = function() task.spawn(doClonePunch) end,
+OpenRoomMap = function() if PathfindLib then PathfindLib.OpenLayoutMap() end end,
+AddNodeHere = function()
+local myR = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
+if myR and PathfindLib then PathfindLib.AddNode(myR.Position - Vector3.new(0, 2.5, 0)) end
+end,
+AutoCarpet = function() if PathfindLib then PathfindLib.AutoGenerateFromCarpet() end end,
+ClearNodes = function() if PathfindLib then PathfindLib.ClearNodes() end end,
 },
 States = {
 MultiClone = { get = function() return multiCloneMode end, set = function(v) multiCloneMode = v end },
 Crouch     = { get = function() return isCrouching end, set = function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end },
 HeadLook   = { get = function() return headLookOn end, set = function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end },
 Jitter     = { get = function() return jitterOn end, set = function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end },
+Freecam    = { get = function() return FreecamLib and FreecamLib.Enabled or false end, set = function(v) if FreecamLib then FreecamLib.SetEnabled(v) end end },
+PathLoop   = { get = function() return PathfindLib and PathfindLib.LoopPath or false end, set = function(v) if PathfindLib then PathfindLib.LoopPath = v end end },
+PathSprint = { get = function() return PathfindLib and PathfindLib.SprintPath or false end, set = function(v) if PathfindLib then PathfindLib.SprintPath = v end end },
 },
 RunMode = function(mId, sub, autoSpawn)
 if not LoadedModes[mId] then return end
@@ -374,6 +386,7 @@ end
 end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
+if FreecamLib then FreecamLib.SetEnabled(false) end
 if UIWindow and UIWindow.Gui then UIWindow.Gui:Destroy() end
 if globalPunchDisconnect then globalPunchDisconnect() end
 removeAllClones()
