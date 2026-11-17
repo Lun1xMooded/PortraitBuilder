@@ -421,8 +421,9 @@ solveHeadLookForEntry(entry, dt)
 end
 end
 end
-for _, entry in ipairs(allClones) do
-if entry.model and not entry.isRagdoll then
+        for _, entry in ipairs(allClones) do
+            if entry.model and not entry.isRagdoll and not entry.model:GetAttribute("IsRagdoll") then
+
 for _, part in ipairs(entry.model:GetDescendants()) do
 if part:IsA("BasePart") and part.CanCollide then
 part.CanCollide = false

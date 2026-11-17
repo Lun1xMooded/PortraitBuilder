@@ -1,5 +1,5 @@
 -- libs/CombatLib.lua
--- Физический рэгдолл с CollisionGroup = "None" (как у мешей игрока в DOORS) + удар BoxingGloves
+-- Физический рэгдолл с нативной группой DOORS "Ragdoll" (сталкивается с полом Default, не мешает Player)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -48,7 +48,7 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     local dir = (root.Position - fromPos) * Vector3.new(1, 0, 1)
     dir = (dir.Magnitude > 0.01) and dir.Unit or -root.CFrame.LookVector
 
-    local launchVel = dir * (power or 85) + Vector3.new(0, 32, 0)
+    local launchVel = dir * (power or 75) + Vector3.new(0, 32, 0)
 
     hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
     hum:ChangeState(Enum.HumanoidStateType.Physics)
@@ -73,12 +73,13 @@ function CombatLib.KnockbackPlayer(fromPos, power)
     end)
 end
 
--- 3. Физический рэгдолл клона: все руки, ноги и голова имеют CollisionGroup = "None" и лежат на полу
+-- 3. Физический рэгдолл клона с нативной группой DOORS "Ragdoll"
 function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     if not clone then return nil end
     local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
+    clone:SetAttribute("IsRagdoll", true)
     local startSafePos = root.Position
     local savedMotors = {}
     local tempRagdoll = {}
@@ -88,7 +89,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         hum.PlatformStand = true
     end
 
-    -- Заменяем суставы Motor6D на BallSocketConstraint с естественными ограничениями углов
     for _, desc in ipairs(clone:GetDescendants()) do
         if desc:IsA("Motor6D") and desc.Part0 and desc.Part1 and desc.Name ~= "Handle" and desc.Name ~= "LeftHandle" then
             local a0 = Instance.new("Attachment")
@@ -118,12 +118,12 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         end
     end
 
-    -- Включаем физику и CollisionGroup = "None" (как у мешей игрока в DOORS — твёрдо сталкивается с полом!)
+    -- Назначаем группу "Ragdoll" (из матрицы DOORS: сталкивается с полом Default, но не мешает Player!)
     for _, part in ipairs(clone:GetDescendants()) do
         if part:IsA("BasePart") then
             part.Anchored = false
             part.Massless = false
-            pcall(function() part.CollisionGroup = "None" end)
+            pcall(function() part.CollisionGroup = "Ragdoll" end)
             if not part:FindFirstAncestorOfClass("Tool") and not part:FindFirstAncestorOfClass("Accessory") then
                 part.CanCollide = true
             end
@@ -148,7 +148,6 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
     end
     rp.FilterDescendantsInstances = ignoreList
 
-    -- Страховка от вылета за пределы карты или провала ниже уровня комнаты
     local guardConn = RunService.Heartbeat:Connect(function()
         if not root or not root.Parent then return end
         if (root.Position - startSafePos).Magnitude > 35 or root.Position.Y < startSafePos.Y - 12 then
@@ -161,6 +160,7 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
         if guardConn then guardConn:Disconnect() end
         if not clone or not clone.Parent then return nil end
 
+        clone:SetAttribute("IsRagdoll", nil)
         local landedPos = root.Position
 
         for _, inst in ipairs(tempRagdoll) do
@@ -171,7 +171,7 @@ function CombatLib.ApplyRagdoll(clone, knockbackDir, power)
             if part:IsA("BasePart") then
                 part.CanCollide = false
                 part.Massless = true
-                pcall(function() part.CollisionGroup = "None" end)
+                pcall(function() part.CollisionGroup = "NoPlayer" end)
                 part.AssemblyLinearVelocity = Vector3.zero
                 part.AssemblyAngularVelocity = Vector3.zero
             end
