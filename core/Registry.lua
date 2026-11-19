@@ -6,6 +6,7 @@ Registry.Plugins = {
     "plugins/CombatPlugin.lua",
     "plugins/FreecamPlugin.lua",
     "plugins/PathfindPlugin.lua",
+	"plugins/CutsceneControlPlugin.lua",
 }
 
 -- 1. Список обликов, переключаемых клавишей [G]
@@ -88,8 +89,9 @@ Registry.MenuCategories = {
         Title = "Путь / Камера",
         Icon = "rbxassetid://10099841910",
         Items = {
-            { Type = "Section", Text = "Свободная камера (Freecam)" },
-            { Type = "Toggle",  Text = "Свободная камера (WASD + QE)", StateKey = "Freecam" },
+            { Type = "Section", Text = "Свободная камера и Катсцены" },
+            { Type = "Toggle",  Text = "Свободная камера (WASD + QE)",                StateKey = "Freecam" },
+            { Type = "Toggle",  Text = "Свобода в катсценах (Камера + Ходьба)",       StateKey = "CutsceneFreedom" },
             { Type = "Section", Text = "PathfindNodes (Планировка и точки)" },
             { Type = "Button",  Text = "Открыть схему комнаты (Carpet / Мебель)", ButtonText = "ROOM MAP",    Action = "OpenRoomMap" },
             { Type = "Button",  Text = "Поставить точку в моей позиции",          ButtonText = "ADD NODE",    Action = "AddNodeHere" },
