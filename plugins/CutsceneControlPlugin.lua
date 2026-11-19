@@ -1,35 +1,44 @@
 -- plugins/CutsceneControlPlugin.lua
--- Полная свобода в любых катсценах DOORS: ходьба, спринт, обзор мышью без лица перед камерой + видимость всех игроков
+-- Свобода в катсценах DOORS без отключения модулей (анимации катсцен играют, но WASD, камера и видимость игроков разблокированы)
 
 return function(API)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
     local LocalPlayer = Players.LocalPlayer
 
     local enabled = false
-    local mainGameEnv = nil
+    local MainGameState = nil
+    local PlayerControls = nil
 
-    local function getMainGameTable()
-        if mainGameEnv and type(mainGameEnv) == "table" and mainGameEnv.cam then
-            return mainGameEnv
+    task.spawn(function()
+        local ps = LocalPlayer:WaitForChild("PlayerScripts", 5)
+        local pm = ps and ps:WaitForChild("PlayerModule", 5)
+        if pm then
+            local ok, mod = pcall(require, pm)
+            if ok and mod and mod.GetControls then
+                PlayerControls = mod:GetControls()
+            end
         end
+    end)
 
-        local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    local function findMainGame()
+        if MainGameState and type(MainGameState) == "table" and MainGameState.cam then
+            return MainGameState
+        end
+        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local mainUI = pgui and pgui:FindFirstChild("MainUI")
-        local mainGameMod = mainUI and mainUI:FindFirstChild("Main_Game", true)
-        if mainGameMod and mainGameMod:IsA("ModuleScript") then
-            local ok, res = pcall(require, mainGameMod)
+        local mgMod = mainUI and mainUI:FindFirstChild("Main_Game", true)
+        if mgMod and mgMod:IsA("ModuleScript") then
+            local ok, res = pcall(require, mgMod)
             if ok and type(res) == "table" then
-                mainGameEnv = res
+                MainGameState = res
                 return res
             end
         end
-
-        if getgc then
+        if type(getgc) == "function" then
             for _, v in ipairs(getgc(true)) do
-                if type(v) == "table" and rawget(v, "stopcam") ~= nil and rawget(v, "hideplayers") ~= nil and rawget(v, "cam") ~= nil then
-                    mainGameEnv = v
+                if type(v) == "table" and rawget(v, "stopcam") ~= nil and rawget(v, "hideplayers") ~= nil then
+                    MainGameState = v
                     return v
                 end
             end
@@ -37,7 +46,6 @@ return function(API)
         return nil
     end
 
-    -- Скрываем только голову/лицо и шапки локального игрока от первого лица, чтобы не мешали обзору
     local function hideFirstPersonHead(char)
         if not char then return end
         local head = char:FindFirstChild("Head")
@@ -60,17 +68,24 @@ return function(API)
         end
     end
 
-    local function enforceFreedom()
-        local mg = getMainGameTable()
-        if mg then
-            if mg.stopcam == true then mg.stopcam = false end
-            if mg.freemouse == true then mg.freemouse = false end
-            if mg.incutscene == true then mg.incutscene = false end
-            if mg.disableMovement == true then mg.disableMovement = false end
-            if mg.camlock ~= nil then mg.camlock = nil end
-            if mg.stunned == true then mg.stunned = false end
+    local function stepUnlocker()
+        if not enabled then return end
 
-            if mg.hideplayers ~= 0 then
+        -- 1. Принудительно включаем контроллер WASD / джойстик
+        if PlayerControls and not PlayerControls.enabled then
+            PlayerControls:Enable()
+        end
+
+        -- 2. Разблокируем флаги Main_Game до того, как их прочитает Movement (приоритет 101)
+        local mg = findMainGame()
+        if mg then
+            mg.stopcam = false
+            mg.freemouse = false
+            mg.disableMovement = false
+            mg.incutscene = false
+            mg.camlock = nil
+
+            if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
                 mg.hideplayers = 0
                 if type(mg.update) == "function" then
                     pcall(mg.update)
@@ -78,29 +93,38 @@ return function(API)
             end
         end
 
+        -- 3. Снимаем блокировки движения с персонажа и Humanoid
         local char = LocalPlayer.Character
         if char then
-            -- Снимаем серверные/клиентские блокировки движения из Movement DOORS
-            if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", nil) end
-            if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", nil) end
-            if char:GetAttribute("AnimatingClient") then char:SetAttribute("AnimatingClient", nil) end
-            if char:GetAttribute("Stunned") then char:SetAttribute("Stunned", nil) end
-            if char:GetAttribute("CantHoldItems") then char:SetAttribute("CantHoldItems", nil) end
+            if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", false) end
+            if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", false) end
+            if char:GetAttribute("Animating") then char:SetAttribute("Animating", false) end
+            if char:GetAttribute("AnimatingClient") then char:SetAttribute("AnimatingClient", false) end
 
             local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 and not char:GetAttribute("Hiding") then
-                local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
-                local targetSpeed = wantSprint and 24 or 15
-                if hum.WalkSpeed < targetSpeed then
-                    hum.WalkSpeed = targetSpeed
+            if hum then
+                if hum.PlatformStand then hum.PlatformStand = false end
+                if hum.WalkSpeed == 0 and not char:GetAttribute("Hiding") then
+                    hum.WalkSpeed = 15
                 end
             end
 
-            -- Убираем твоё лицо из камеры от первого лица (если не включён Freecam)
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local col = char:FindFirstChild("CollisionPart")
+            if hrp and hrp.Anchored then hrp.Anchored = false end
+            if col and col.Anchored then col.Anchored = false end
+
             local cam = workspace.CurrentCamera
             local head = char:FindFirstChild("Head")
             if cam and head and (cam.CFrame.Position - head.Position).Magnitude < 2.2 then
                 hideFirstPersonHead(char)
+            end
+        end
+
+        -- 4. Возвращаем видимость другим игрокам
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:GetAttribute("CutsceneHidden") then
+                p.Character:SetAttribute("CutsceneHidden", false)
             end
         end
     end
@@ -108,11 +132,10 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            -- Приоритет 90 срабатывает ДО caminit (95) и ДО movement (101) DOORS!
-            RunService:BindToRenderStep("MemeActorCutsceneFreedom", 90, enforceFreedom)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (ходьба, спринт, камера без лица в экране + видимость игроков!)")
+            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 100, stepUnlocker)
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (WASD + Камера разблокированы, анимации играют)")
         else
-            RunService:UnbindFromRenderStep("MemeActorCutsceneFreedom")
+            RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
         end
     end
