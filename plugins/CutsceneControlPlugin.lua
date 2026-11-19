@@ -1,9 +1,10 @@
 -- plugins/CutsceneControlPlugin.lua
--- Свобода в катсценах DOORS без отключения модулей (анимации катсцен играют, но WASD, камера и видимость игроков разблокированы)
+-- Полная свобода в катсценах DOORS без инверсии (сброс confusion + выравнивание тела по камере)
 
 return function(API)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
     local LocalPlayer = Players.LocalPlayer
 
     local enabled = false
@@ -25,7 +26,7 @@ return function(API)
         if MainGameState and type(MainGameState) == "table" and MainGameState.cam then
             return MainGameState
         end
-        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+        local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         local mainUI = pgui and pgui:FindFirstChild("MainUI")
         local mgMod = mainUI and mainUI:FindFirstChild("Main_Game", true)
         if mgMod and mgMod:IsA("ModuleScript") then
@@ -71,12 +72,10 @@ return function(API)
     local function stepUnlocker()
         if not enabled then return end
 
-        -- 1. Принудительно включаем контроллер WASD / джойстик
         if PlayerControls and not PlayerControls.enabled then
             PlayerControls:Enable()
         end
 
-        -- 2. Разблокируем флаги Main_Game до того, как их прочитает Movement (приоритет 101)
         local mg = findMainGame()
         if mg then
             mg.stopcam = false
@@ -84,6 +83,9 @@ return function(API)
             mg.disableMovement = false
             mg.incutscene = false
             mg.camlock = nil
+            mg.confusion = false -- Убираем инверсию WASD из Movement DOORS!
+            mg.chase = false
+            mg.chaseMove = false
 
             if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
                 mg.hideplayers = 0
@@ -93,35 +95,45 @@ return function(API)
             end
         end
 
-        -- 3. Снимаем блокировки движения с персонажа и Humanoid
         local char = LocalPlayer.Character
         if char then
             if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", false) end
             if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", false) end
             if char:GetAttribute("Animating") then char:SetAttribute("Animating", false) end
             if char:GetAttribute("AnimatingClient") then char:SetAttribute("AnimatingClient", false) end
+            if char:GetAttribute("Confusion") then char:SetAttribute("Confusion", nil) end
 
             local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                if hum.PlatformStand then hum.PlatformStand = false end
-                if hum.WalkSpeed == 0 and not char:GetAttribute("Hiding") then
-                    hum.WalkSpeed = 15
-                end
-            end
-
-            local hrp = char:FindFirstChild("HumanoidRootPart")
             local col = char:FindFirstChild("CollisionPart")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+
             if hrp and hrp.Anchored then hrp.Anchored = false end
             if col and col.Anchored then col.Anchored = false end
 
+            if hum and hum.Health > 0 and not char:GetAttribute("Hiding") then
+                if hum.PlatformStand then hum.PlatformStand = false end
+                local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
+                local targetSpeed = wantSprint and 24 or 15
+                if hum.WalkSpeed < targetSpeed then
+                    hum.WalkSpeed = targetSpeed
+                end
+            end
+
+            -- Выравниваем тело по направлению взгляда камеры (если не включена свободная камера)
             local cam = workspace.CurrentCamera
+            if cam and col and not (mg and mg.freecam) and not char:GetAttribute("Hiding") then
+                local flatLook = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
+                if flatLook.Magnitude > 0.01 then
+                    col.CFrame = CFrame.lookAlong(col.Position, flatLook.Unit)
+                end
+            end
+
             local head = char:FindFirstChild("Head")
             if cam and head and (cam.CFrame.Position - head.Position).Magnitude < 2.2 then
                 hideFirstPersonHead(char)
             end
         end
 
-        -- 4. Возвращаем видимость другим игрокам
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:GetAttribute("CutsceneHidden") then
                 p.Character:SetAttribute("CutsceneHidden", false)
@@ -132,8 +144,9 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 100, stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (WASD + Камера разблокированы, анимации играют)")
+            -- Приоритет 102 срабатывает сразу ПОСЛЕ movement (101) DOORS, перезаписывая любую инверсию!
+            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 102, stepUnlocker)
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (без инверсии)")
         else
             RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
