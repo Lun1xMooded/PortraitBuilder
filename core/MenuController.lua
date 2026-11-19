@@ -5,13 +5,14 @@ function MenuController.Build(Import, Registry, Context)
     local Theme   = Import("ui/DoorsTheme.lua")
     local Builder = Import("ui/DoorsGuiBuilder.lua")
     if not Theme or not Builder or not Registry or not Registry.MenuCategories then
+        warn("[MenuController] Не загрузились Theme или Builder!")
         return nil, {}
     end
 
     local toggles = {}
     local sliders = getgenv().MemeCustomSliders or {}
     local keybinds = getgenv().MemeCustomKeybinds or {}
-    local uiWindow = Builder.Create(Import, Theme, "MEME ACTOR", "[ [ / ] ] Меню")
+    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "[ [ / ] ] Меню")
 
     for _, catData in ipairs(Registry.MenuCategories) do
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
@@ -26,10 +27,12 @@ function MenuController.Build(Import, Registry, Context)
                         Context.RunMode(item.ModeId, item.SubMode, item.AutoSpawn)
                     end
                 end, item.Color)
-            elseif item.Type == "Toggle" and item.StateKey and Context.States[item.StateKey] then
+            elseif item.Type == "Toggle" and item.StateKey then
                 local st = Context.States[item.StateKey]
-                toggles[item.StateKey] = catTab:AddToggle(item.Text, st.get(), function(val)
-                    st.set(val)
+                local defVal = st and st.get() or false
+                toggles[item.StateKey] = catTab:AddToggle(item.Text, defVal, function(val)
+                    local curSt = Context.States[item.StateKey]
+                    if curSt and curSt.set then curSt.set(val) end
                 end)
             elseif item.Type == "Slider" and item.SettingKey and sliders[item.SettingKey] then
                 local sl = sliders[item.SettingKey]
