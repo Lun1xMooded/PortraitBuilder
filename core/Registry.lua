@@ -1,11 +1,18 @@
 -- core/Registry.lua
 local Registry = {}
 
+-- 0. Подключаемые плагины (расширяют ядро без изменения MainEngine.lua)
+Registry.Plugins = {
+    "plugins/CombatPlugin.lua",
+    "plugins/FreecamPlugin.lua",
+    "plugins/PathfindPlugin.lua",
+}
+
 -- 1. Список обликов, переключаемых клавишей [G]
 Registry.ActorList = {
-    { Id = "PortraitLight", Label = "Portrait Белый (Сток)", Type = "Portrait",      Variant = "PortraitLight" },
-    { Id = "PortraitDark",  Label = "Portrait Чёрный",       Type = "Portrait",      Variant = "PortraitDark" },
-    { Id = "LocalAvatar",   Label = "Мой аватар (Билдер)",   Type = "CustomBuilder", Path = "builders/LocalAvatarBuilder.lua" },
+    { Id = "PortraitLight", Label = "Portrait Белый (Сток)", Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitLight", IsPortrait = true, RootOffset = 3.65 },
+    { Id = "PortraitDark",  Label = "Portrait Чёрный",       Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitDark",  IsPortrait = true, RootOffset = 3.65 },
+    { Id = "LocalAvatar",   Label = "Мой аватар (Билдер)",   Type = "CustomBuilder", Path = "builders/LocalAvatarBuilder.lua", Variant = nil,             RootOffset = 3.55 },
 }
 
 -- 2. Внешние модули режимов из папки modes/
