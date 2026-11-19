@@ -1,5 +1,6 @@
 -- plugins/CutsceneControlPlugin.lua
--- Полная свобода в катсценах DOORS: поворот тела + BodyGyro за камерой и полная совместимость со шкафами (Hiding)
+-- Идеальная свобода в катсценах DOORS: синхронный поворот тела за камерой (приоритет 96 перед movement),
+-- полная совместимость со щитком (InMinigame), шкафами (Hiding) и транспортом (SeatedInSeat)
 
 return function(API)
     local Players = game:GetService("Players")
@@ -75,9 +76,14 @@ return function(API)
         local char = LocalPlayer.Character
         if not char then return end
 
-        -- Если игрок прячется в шкафу / под кроватью или сидит, НЕ вмешиваемся в камеру и camlock!
-        local isHiding = char:GetAttribute("Hiding") == true
-        local isSeated = char:GetAttribute("SeatedInSeat") == true
+        -- Если игрок решает щиток (InMinigame), прячется в шкафу (Hiding) или сидит — НЕ мешаем игре!
+        local isBusy = (char:GetAttribute("InMinigame") == true)
+            or (char:GetAttribute("Hiding") == true)
+            or (char:GetAttribute("SeatedInSeat") == true)
+
+        if isBusy then
+            return
+        end
 
         if PlayerControls and not PlayerControls.enabled then
             PlayerControls:Enable()
@@ -89,14 +95,8 @@ return function(API)
             mg.freemouse = false
             mg.disableMovement = false
             mg.incutscene = false
+            mg.camlock = nil
             mg.confusion = false
-            mg.chase = false
-            mg.chaseMove = false
-
-            -- Сбрасываем camlock ТОЛЬКО когда игрок НЕ в шкафу и НЕ сидит
-            if not isHiding and not isSeated then
-                mg.camlock = nil
-            end
 
             if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
                 mg.hideplayers = 0
@@ -116,12 +116,10 @@ return function(API)
         local col = char:FindFirstChild("CollisionPart")
         local hrp = char:FindFirstChild("HumanoidRootPart")
 
-        if not isHiding and not isSeated then
-            if hrp and hrp.Anchored then hrp.Anchored = false end
-            if col and col.Anchored then col.Anchored = false end
-        end
+        if hrp and hrp.Anchored then hrp.Anchored = false end
+        if col and col.Anchored then col.Anchored = false end
 
-        if hum and hum.Health > 0 and not isHiding and not isSeated then
+        if hum and hum.Health > 0 then
             hum.AutoRotate = false
             if hum.PlatformStand then hum.PlatformStand = false end
             local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
@@ -131,17 +129,18 @@ return function(API)
             end
         end
 
-        -- Поворачиваем и CollisionPart, и его BodyGyro за камерой (чтобы тело всегда крутилось синхронно с камерой!)
+        -- Поворачиваем CollisionPart, HumanoidRootPart и BodyGyro ДО цикла movement DOORS (приоритет 96 > caminit 95, < movement 101)
         local cam = workspace.CurrentCamera
-        if cam and col and not (mg and mg.freecam) and not isHiding and not isSeated then
-            local flatLook = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
-            if flatLook.Magnitude > 0.01 then
-                local lookCF = CFrame.lookAlong(col.Position, flatLook.Unit)
-                col.CFrame = lookCF
-                local gyro = col:FindFirstChildOfClass("BodyGyro")
-                if gyro then
-                    gyro.CFrame = lookCF.Rotation
-                end
+        if cam and col and not (mg and mg.freecam) then
+            local yawRad = (mg and mg.ax) and math.rad(mg.ax) or select(2, cam.CFrame:ToEulerAnglesYXZ())
+            local targetRot = CFrame.Angles(0, yawRad, 0)
+            col.CFrame = CFrame.new(col.Position) * targetRot
+            if hrp then
+                hrp.CFrame = CFrame.new(hrp.Position) * targetRot
+            end
+            local gyro = col:FindFirstChildOfClass("BodyGyro")
+            if gyro then
+                gyro.CFrame = targetRot
             end
         end
 
@@ -160,8 +159,9 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 102, stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (синхронный поворот тела + шкафы работают)")
+            -- Приоритет 96: срабатывает сразу после caminit (95) и ДО movement (101), поэтому тело и камера всегда синхронны!
+            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 96, stepUnlocker)
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (синхронный поворот тела + щиток и шкафы работают)")
         else
             RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
