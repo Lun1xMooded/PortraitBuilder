@@ -1,6 +1,7 @@
 -- plugins/CutsceneControlPlugin.lua
--- Чистая разблокировка катсцен DOORS: не ломает поворот тела (отдаёт поворот родному Movement DOORS)
--- и полностью уступает управление при открытии щитка (MinigameBackout) и шкафов (Hiding)!
+-- Нативная свобода в катсценах DOORS через _G.m:
+-- отдаёт поворот тела и ходьбу родному Movement DOORS (не трогает CFrame и BodyGyro!),
+-- но подавляет stopcam/freemouse катсцен до caminit (94) и movement (100) и не мешает щитку/шкафам.
 
 return function(API)
     local Players = game:GetService("Players")
@@ -8,7 +9,6 @@ return function(API)
     local LocalPlayer = Players.LocalPlayer
 
     local enabled = false
-    local MainGameState = nil
     local PlayerControls = nil
 
     task.spawn(function()
@@ -22,9 +22,9 @@ return function(API)
         end
     end)
 
-    local function findMainGame()
-        if MainGameState and type(MainGameState) == "table" and MainGameState.cam then
-            return MainGameState
+    local function getM()
+        if _G.m and type(_G.m) == "table" then
+            return _G.m
         end
         local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         local mainUI = pgui and pgui:FindFirstChild("MainUI")
@@ -32,28 +32,19 @@ return function(API)
         if mgMod and mgMod:IsA("ModuleScript") then
             local ok, res = pcall(require, mgMod)
             if ok and type(res) == "table" then
-                MainGameState = res
+                _G.m = res
                 return res
-            end
-        end
-        if type(getgc) == "function" then
-            for _, v in ipairs(getgc(true)) do
-                if type(v) == "table" and rawget(v, "stopcam") ~= nil and rawget(v, "hideplayers") ~= nil then
-                    MainGameState = v
-                    return v
-                end
             end
         end
         return nil
     end
 
-    local function isInMinigameOrHiding(char, mg)
+    local function isBusyInGame(char, m)
         if char:GetAttribute("Hiding") == true then return true end
         if char:GetAttribute("InMinigame") == true then return true end
         if char:GetAttribute("SeatedInSeat") == true then return true end
-        if mg and (mg.minigaming == true or mg.camlock ~= nil) then return true end
+        if m and (m.minigaming == true or m.camlock ~= nil or m.hiding == true) then return true end
 
-        -- Проверка экрана щитка / пазлов (MainUI.MinigameBackout.Visible)
         local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         local mainUI = pgui and pgui:FindFirstChild("MainUI")
         local backout = mainUI and mainUI:FindFirstChild("MinigameBackout")
@@ -64,41 +55,41 @@ return function(API)
         return false
     end
 
-    local function stepUnlocker()
+    local function stepCutsceneFreedom()
         if not enabled then return end
 
         local char = LocalPlayer.Character
         if not char then return end
 
-        local mg = findMainGame()
+        local m = getM()
 
-        -- Если открыт щиток (MinigameBackout), шкаф (Hiding) или сиденье — полностью уступаем управление игре!
-        if isInMinigameOrHiding(char, mg) then
+        -- Если игрок решает щиток (MinigameBackout), прячется в шкафу (Hiding) или сидит — не вмешиваемся!
+        if isBusyInGame(char, m) then
             return
         end
 
-        -- 1. Включаем контроллер WASD
+        -- 1. Включаем стандартный контроллер WASD
         if PlayerControls and not PlayerControls.enabled then
             PlayerControls:Enable()
         end
 
-        -- 2. Сбрасываем только флаги блокировки катсцены (сам Movement DOORS повернёт тело за камерой!)
-        if mg then
-            if mg.stopcam == true then mg.stopcam = false end
-            if mg.freemouse == true then mg.freemouse = false end
-            if mg.disableMovement == true then mg.disableMovement = false end
-            if mg.incutscene == true then mg.incutscene = false end
-            if mg.confusion == true then mg.confusion = false end
+        -- 2. Снимаем флаги заморозки из _G.m (дальше родной Movement DOORS сам повернёт тело за камерой!)
+        if m then
+            if m.stopcam == true then m.stopcam = false end
+            if m.freemouse == true then m.freemouse = false end
+            if m.disableMovement == true then m.disableMovement = false end
+            if m.incutscene == true then m.incutscene = false end
+            if m.confusion == true then m.confusion = false end
 
-            if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
-                mg.hideplayers = 0
-                if type(mg.update) == "function" then
-                    pcall(mg.update)
+            if m.hideplayers ~= 0 and not m.noclip then
+                m.hideplayers = 0
+                if type(m.update) == "function" then
+                    pcall(m.update)
                 end
             end
         end
 
-        -- 3. Снимаем атрибуты заморозки с персонажа
+        -- 3. Снимаем атрибуты заморозки с персонажа (но НЕ трогаем CollisionPart.CFrame и BodyGyro!)
         if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", false) end
         if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", false) end
         if char:GetAttribute("Animating") then char:SetAttribute("Animating", false) end
@@ -107,7 +98,6 @@ return function(API)
 
         local hum = char:FindFirstChildOfClass("Humanoid")
         if hum then
-            hum.AutoRotate = true
             if hum.PlatformStand then hum.PlatformStand = false end
             if hum.WalkSpeed == 0 then hum.WalkSpeed = 15 end
         end
@@ -128,11 +118,13 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            -- Приоритет 100 срабатывает прямо перед родным movement (101) DOORS
-            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 100, stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (родной поворот тела + щиток и шкафы работают)")
+            -- Срабатывает на 94 (прямо перед caminit 95) и на 100 (прямо перед movement 101)
+            RunService:BindToRenderStep("MemeActorCutscenePreCam", 94, stepCutsceneFreedom)
+            RunService:BindToRenderStep("MemeActorCutscenePreMove", 100, stepCutsceneFreedom)
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (родной поворот Movement + щиток и шкафы работают)")
         else
-            RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
+            RunService:UnbindFromRenderStep("MemeActorCutscenePreCam")
+            RunService:UnbindFromRenderStep("MemeActorCutscenePreMove")
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
         end
     end
