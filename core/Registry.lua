@@ -6,7 +6,8 @@ Registry.Plugins = {
     "plugins/CombatPlugin.lua",
     "plugins/FreecamPlugin.lua",
     "plugins/PathfindPlugin.lua",
-	"plugins/CutsceneControlPlugin.lua",
+    "plugins/CutsceneControlPlugin.lua",
+    "plugins/ActorModsPlugin.lua",
 }
 
 -- 1. Список обликов, переключаемых клавишей [G]
@@ -93,14 +94,31 @@ Registry.MenuCategories = {
             { Type = "Toggle",  Text = "Свободная камера (WASD + QE)",                StateKey = "Freecam" },
             { Type = "Toggle",  Text = "Свобода в катсценах (Камера + Ходьба)",       StateKey = "CutsceneFreedom" },
             { Type = "Section", Text = "PathfindNodes (Планировка и точки)" },
-            { Type = "Button",  Text = "Открыть схему комнаты (Carpet / Мебель)", ButtonText = "ROOM MAP",    Action = "OpenRoomMap" },
-            { Type = "Button",  Text = "Поставить точку в моей позиции",          ButtonText = "ADD NODE",    Action = "AddNodeHere" },
-            { Type = "Button",  Text = "Авто-маршрут по коврам (Carpet)",         ButtonText = "AUTO CARPET", Action = "AutoCarpet" },
-            { Type = "Button",  Text = "Запустить бег клона по точкам",          ButtonText = "START PATH",  ModeId = "Pathfind", AutoSpawn = "Close", Color = Color3.fromRGB(76, 154, 204) },
-            { Type = "Toggle",  Text = "Показывать 3D-шары точек в комнате",      StateKey = "PathMarkers" },
-            { Type = "Toggle",  Text = "Зациклить маршрут (Loop)",                StateKey = "PathLoop" },
-            { Type = "Toggle",  Text = "Бежать по точкам (Sprint)",               StateKey = "PathSprint" },
-            { Type = "Button",  Text = "Очистить все точки маршрута",             ButtonText = "CLEAR NODES", Action = "ClearNodes", Color = Color3.fromRGB(204, 68, 26) },
+            { Type = "Button",  Text = "Открыть схему комнаты (Carpet / Мебель)",     ButtonText = "ROOM MAP",    Action = "OpenRoomMap" },
+            { Type = "Button",  Text = "Поставить точку в моей позиции",              ButtonText = "ADD NODE",    Action = "AddNodeHere" },
+            { Type = "Button",  Text = "Авто-маршрут по коврам (Carpet)",             ButtonText = "AUTO CARPET", Action = "AutoCarpet" },
+            { Type = "Button",  Text = "Запустить бег клона по точкам",              ButtonText = "START PATH",  ModeId = "Pathfind", AutoSpawn = "Close", Color = Color3.fromRGB(76, 154, 204) },
+            { Type = "Toggle",  Text = "Показывать 3D-шары точек в комнате",          StateKey = "PathMarkers" },
+            { Type = "Toggle",  Text = "Зациклить маршрут (Loop)",                    StateKey = "PathLoop" },
+            { Type = "Toggle",  Text = "Бежать по точкам (Sprint)",                   StateKey = "PathSprint" },
+            { Type = "Button",  Text = "Очистить все точки маршрута",                 ButtonText = "CLEAR NODES", Action = "ClearNodes", Color = Color3.fromRGB(204, 68, 26) },
+        }
+    },
+    {
+        Id = "CustomMods",
+        Title = "Кастом",
+        Icon = "rbxassetid://18359551282",
+        Items = {
+            { Type = "Section", Text = "Горячие клавиши (Бинды)" },
+            { Type = "Keybind", Text = "Запустить бег по точкам",               BindKey = "KeyPathRun" },
+            { Type = "Keybind", Text = "Быстрый налёт в перчатках + нокаут",    BindKey = "KeyAmbushRush" },
+            { Type = "Section", Text = "Глобальные настройки режимов Portrait" },
+            { Type = "Toggle",  Text = "Своя скорость во всех режимах",         StateKey = "UseCustomSpeed" },
+            { Type = "Slider",  Text = "Значение скорости (studs/s)",           SettingKey = "CustomSpeed",   Min = 5,  Max = 150 },
+            { Type = "Toggle",  Text = "Нокаут при сближении в любом режиме",   StateKey = "AutoKnockout" },
+            { Type = "Slider",  Text = "Сила удара / нокаута",                  SettingKey = "KnockoutPower", Min = 20, Max = 180 },
+            { Type = "Toggle",  Text = "Всегда держать BoxingGloves в руках",   StateKey = "AlwaysGloves" },
+            { Type = "Toggle",  Text = "Исчезать после удара (Скример)",        StateKey = "VanishAfterHit" },
         }
     },
 }
@@ -108,16 +126,14 @@ Registry.MenuCategories = {
 function Registry.PrintStartupBanner(Config)
     local keys = Config.Keys or {}
     print(string.format(
-        "[MemeActor v%s] Загружено! [ [ / ] ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор-погоня | [%s] Зеркало | [%s] Удар | [%s] Удалить",
+        "[MemeActor v%s] Загружено! [ [ / ] ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор | [%s] Зеркало | [F1] Точки | [F2] Налёт",
         tostring(Config.Version),
         keys.Spawn or "Z",
         keys.SpawnHere or "P",
         keys.MultiToggle or "U",
         keys.SwitchActor or "G",
         keys.HardcoreChase or "Q",
-        keys.Mirror or "R",
-        keys.PunchAction or "O",
-        keys.Remove or "V"
+        keys.Mirror or "R"
     ))
 end
 

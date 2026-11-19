@@ -1,6 +1,4 @@
 -- core/MenuController.lua
--- Контроллер сборки меню из папки ui/ и Registry.MenuCategories
-
 local MenuController = {}
 
 function MenuController.Build(Import, Registry, Context)
@@ -11,7 +9,9 @@ function MenuController.Build(Import, Registry, Context)
     end
 
     local toggles = {}
-    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "[ [ / ] ] Меню")
+    local sliders = getgenv().MemeCustomSliders or {}
+    local keybinds = getgenv().MemeCustomKeybinds or {}
+    local uiWindow = Builder.Create(Import, Theme, "MEME ACTOR", "[ [ / ] ] Меню")
 
     for _, catData in ipairs(Registry.MenuCategories) do
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
@@ -30,6 +30,16 @@ function MenuController.Build(Import, Registry, Context)
                 local st = Context.States[item.StateKey]
                 toggles[item.StateKey] = catTab:AddToggle(item.Text, st.get(), function(val)
                     st.set(val)
+                end)
+            elseif item.Type == "Slider" and item.SettingKey and sliders[item.SettingKey] then
+                local sl = sliders[item.SettingKey]
+                catTab:AddSlider(item.Text, item.Min, item.Max, sl.get(), function(val)
+                    sl.set(val)
+                end)
+            elseif item.Type == "Keybind" and item.BindKey and keybinds[item.BindKey] then
+                local kb = keybinds[item.BindKey]
+                catTab:AddKeybind(item.Text, kb.get(), function(newKey)
+                    kb.set(newKey)
                 end)
             end
         end

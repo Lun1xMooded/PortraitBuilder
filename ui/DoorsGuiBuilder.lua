@@ -1,32 +1,19 @@
 -- ui/DoorsGuiBuilder.lua
--- Точная верстка DoorsAdmin из дампа + нативная разблокировка мышки DOORS ("UnlockMouseVisible")
+-- Собирает каркас окна DoorsAdmin и подключает отдельные компоненты из ui/components/
 
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
 
 local DoorsGuiBuilder = {}
 
-local function corner(parent, scale, offset)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(scale or 0, offset or 8)
-    c.Parent = parent
-    return c
-end
+function DoorsGuiBuilder.Create(Import, Theme, titleText, subText)
+    local ButtonComp  = Import("ui/components/ButtonItem.lua")
+    local ToggleComp  = Import("ui/components/ToggleItem.lua")
+    local SliderComp  = Import("ui/components/SliderItem.lua")
+    local KeybindComp = Import("ui/components/KeybindItem.lua")
 
-local function stroke(parent, color, thick, transp)
-    local s = Instance.new("UIStroke")
-    s.Color = color
-    s.Thickness = thick or 3
-    s.Transparency = transp or 0
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent = parent
-    return s
-end
-
-function DoorsGuiBuilder.Create(Theme, titleText, subText)
     local pgui = LocalPlayer:WaitForChild("PlayerGui")
     local old = pgui:FindFirstChild("MemeActorDoorsAdmin")
     if old then old:Destroy() end
@@ -37,7 +24,6 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     sg.Parent = pgui
 
-    -- Главный Container из дампа DoorsAdmin (AspectRatio = 1.250, Pos = {0.5,0},{0,40}, Size = {0.9,0},{0.95,-40})
     local container = Instance.new("Frame")
     container.Name = "Container"
     container.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -47,19 +33,14 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     container.BackgroundTransparency = 0.20
     container.Visible = false
     container.Parent = sg
-    corner(container, 0.02, 0)
-    stroke(container, Theme.Cream, 3, 0)
-
-    -- Нативный тег DOORS: пока container.Visible == true, камера DOORS сама разблокирует мышку!
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0.02, 0)
+    local st = Instance.new("UIStroke", container)
+    st.Color = Theme.Cream
+    st.Thickness = 3
     CollectionService:AddTag(container, "UnlockMouseVisible")
+    Instance.new("UIAspectRatioConstraint", container).AspectRatio = 1.250
 
-    local aspect = Instance.new("UIAspectRatioConstraint")
-    aspect.AspectRatio = 1.250
-    aspect.Parent = container
-
-    -- Шапка окна (Header) с перетаскиванием
     local header = Instance.new("Frame")
-    header.Name = "Header"
     header.AnchorPoint = Vector2.new(0.5, 0)
     header.Position = UDim2.new(0.5, 0, 0.02, 0)
     header.Size = UDim2.new(0.965, 0, 0.075, 0)
@@ -68,9 +49,7 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
 
     local dragging, dragStart, startPos = false, nil, nil
     header.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging, dragStart, startPos = true, inp.Position, container.Position
-        end
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging, dragStart, startPos = true, inp.Position, container.Position end
     end)
     UserInputService.InputChanged:Connect(function(inp)
         if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
@@ -83,7 +62,6 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     end)
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Name = "Title_Store"
     titleLbl.AnchorPoint = Vector2.new(0, 0.5)
     titleLbl.Position = UDim2.new(0, 0, 0.5, 0)
     titleLbl.Size = UDim2.new(0.45, 0, 1, 0)
@@ -96,7 +74,6 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     titleLbl.Parent = header
 
     local attrInfo = Instance.new("TextLabel")
-    attrInfo.Name = "AttributeInformation"
     attrInfo.AnchorPoint = Vector2.new(0, 0.5)
     attrInfo.Position = UDim2.new(0.36, 0, 0.5, 0)
     attrInfo.Size = UDim2.new(0.54, 0, 0.72, 0)
@@ -109,7 +86,6 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     attrInfo.Parent = header
 
     local closeBtn = Instance.new("ImageButton")
-    closeBtn.Name = "CloseButton"
     closeBtn.AnchorPoint = Vector2.new(1, 0.5)
     closeBtn.Position = UDim2.new(1, 0, 0.5, 0)
     closeBtn.Size = UDim2.new(0.95, 0, 0.95, 0)
@@ -117,29 +93,21 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
     closeBtn.Image = Theme.IconClose
     closeBtn.ImageColor3 = Theme.Cream
     closeBtn.Parent = header
-    local closeAsp = Instance.new("UIAspectRatioConstraint")
-    closeAsp.AspectRatio = 1
-    closeAsp.Parent = closeBtn
+    Instance.new("UIAspectRatioConstraint", closeBtn).AspectRatio = 1
 
-    -- Боковые вкладки слева от Container (TabButtons из дампа: Anchor=1,0, Pos={0,-6},{0,0}, Size={0.11,0},{1,0})
     local tabButtons = Instance.new("Frame")
-    tabButtons.Name = "TabButtons"
     tabButtons.AnchorPoint = Vector2.new(1, 0)
     tabButtons.Position = UDim2.new(0, -8, 0, 0)
     tabButtons.Size = UDim2.new(0.11, 0, 1, 0)
     tabButtons.BackgroundTransparency = 1
     tabButtons.Parent = container
 
-    local tabList = Instance.new("UIListLayout")
+    local tabList = Instance.new("UIListLayout", tabButtons)
     tabList.FillDirection = Enum.FillDirection.Vertical
     tabList.Padding = UDim.new(0.02, 0)
     tabList.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    tabList.Parent = tabButtons
 
-    local pagesFolder = Instance.new("Folder")
-    pagesFolder.Name = "Pages"
-    pagesFolder.Parent = container
-
+    local pagesFolder = Instance.new("Folder", container)
     local Window = { Gui = sg, Container = container, Tabs = {} }
 
     function Window:Toggle(force)
@@ -149,26 +117,22 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
             UserInputService.MouseIconEnabled = true
         end
     end
-
     closeBtn.MouseButton1Click:Connect(function() Window:Toggle(false) end)
 
     function Window:AddCategory(catTitle, iconAsset)
         local tabBtn = Instance.new("ImageButton")
-        tabBtn.Name = "TabButton_" .. catTitle
         tabBtn.Size = UDim2.new(1, 0, 0.14, 0)
         tabBtn.BackgroundColor3 = Theme.BgContainer
         tabBtn.BackgroundTransparency = 0.15
         tabBtn.AutoButtonColor = false
         tabBtn.Parent = tabButtons
-        corner(tabBtn, 0.15, 0)
-        local tabStroke = stroke(tabBtn, Theme.Cream, 3, 0)
-
-        local tabAsp = Instance.new("UIAspectRatioConstraint")
-        tabAsp.AspectRatio = 1.05
-        tabAsp.Parent = tabBtn
+        Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0.15, 0)
+        local tabStroke = Instance.new("UIStroke", tabBtn)
+        tabStroke.Color = Theme.Cream
+        tabStroke.Thickness = 3
+        Instance.new("UIAspectRatioConstraint", tabBtn).AspectRatio = 1.05
 
         local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
         icon.AnchorPoint = Vector2.new(0.5, 0.5)
         icon.Position = UDim2.new(0.5, 0, 0.42, 0)
         icon.Size = UDim2.new(0.62, 0, 0.62, 0)
@@ -178,7 +142,6 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
         icon.Parent = tabBtn
 
         local title = Instance.new("TextLabel")
-        title.Name = "Title"
         title.AnchorPoint = Vector2.new(0.5, 1)
         title.Position = UDim2.new(0.5, 0, 0.96, 0)
         title.Size = UDim2.new(0.92, 0, 0.24, 0)
@@ -189,9 +152,7 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
         title.TextScaled = true
         title.Parent = tabBtn
 
-        -- Страница категории (Page из дампа: Anchor=0.5,1, Pos={0.5,0},{0.98,0}, Size={0.965,0},{0.885,0})
         local page = Instance.new("ScrollingFrame")
-        page.Name = catTitle
         page.AnchorPoint = Vector2.new(0.5, 1)
         page.Position = UDim2.new(0.5, 0, 0.98, 0)
         page.Size = UDim2.new(0.965, 0, 0.885, 0)
@@ -204,15 +165,11 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
         page.Visible = false
         page.Parent = pagesFolder
 
-        local pPad = Instance.new("UIPadding")
-        pPad.PaddingRight = UDim.new(0.015, 0)
-        pPad.Parent = page
-
-        local pList = Instance.new("UIListLayout")
+        Instance.new("UIPadding", page).PaddingRight = UDim.new(0.015, 0)
+        local pList = Instance.new("UIListLayout", page)
         pList.FillDirection = Enum.FillDirection.Vertical
         pList.Padding = UDim.new(0, 8)
         pList.SortOrder = Enum.SortOrder.LayoutOrder
-        pList.Parent = page
 
         local Cat = { Button = tabBtn, Page = page, Icon = icon, Title = title, Stroke = tabStroke, Order = 0 }
         local function nextOrd() Cat.Order = Cat.Order + 1; return Cat.Order end
@@ -238,136 +195,37 @@ function DoorsGuiBuilder.Create(Theme, titleText, subText)
         table.insert(Window.Tabs, Cat)
         if #Window.Tabs == 1 then activate() end
 
-        -- SettingHeader из дампа DoorsAdmin
         function Cat:AddSection(secText)
             local hdr = Instance.new("Frame")
-            hdr.Name = "SettingHeader"
             hdr.Size = UDim2.new(1, 0, 0, 34)
             hdr.BackgroundColor3 = Theme.Cream
             hdr.BackgroundTransparency = 0.50
             hdr.LayoutOrder = nextOrd()
             hdr.Parent = page
-            corner(hdr, 0, 8)
+            Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 8)
 
             local lbl = Instance.new("TextLabel")
             lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.9, 0, 0.72, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = string.upper(secText)
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = hdr
-local cIcon = Instance.new("ImageLabel")
-cIcon.AnchorPoint = Vector2.new(1, 0.5)
-cIcon.Position = UDim2.new(0.985, 0, 0.5, 0)
-cIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
-cIcon.BackgroundTransparency = 1
-cIcon.Image = Theme.IconCollapse
-cIcon.ImageColor3 = Theme.Cream
-cIcon.Parent = hdr
-local cAsp = Instance.new("UIAspectRatioConstraint")
-cAsp.AspectRatio = 1.2
-cAsp.Parent = cIcon
+            lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
+            lbl.Size = UDim2.new(0.9, 0, 0.72, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.FontFace = Theme.FontOswald
+            lbl.Text = string.upper(secText)
+            lbl.TextColor3 = Theme.Cream
+            lbl.TextScaled = true
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Parent = hdr
+        end
+
+        function Cat:AddButton(t, bt, cb, col) return ButtonComp(page, Theme, nextOrd(), t, bt, cb, col) end
+        function Cat:AddToggle(t, def, cb)      return ToggleComp(page, Theme, nextOrd(), t, def, cb) end
+        function Cat:AddSlider(t, mn, mx, d, cb) return SliderComp(page, Theme, nextOrd(), t, mn, mx, d, cb) end
+        function Cat:AddKeybind(t, dk, cb)       return KeybindComp(page, Theme, nextOrd(), t, dk, cb) end
+
+        return Cat
+    end
+
+    return Window
 end
--- Строка с кнопкой EXECUTE (Bg = RGB(255,222,189), Tr = 0.90 + кнопка Radius(0.5, 1))
-function Cat:AddButton(actionText, btnText, callback, customColor)
-local row = Instance.new("Frame")
-row.Name = "ButtonRow"
-row.Size = UDim2.new(1, 0, 0, 42)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-corner(row, 0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.Name = "ActionName"
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.62, 0, 0.75, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = actionText
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local btn = Instance.new("TextButton")
-btn.Name = "Button"
-btn.AnchorPoint = Vector2.new(1, 0.5)
-btn.Position = UDim2.new(0.985, 0, 0.5, 0)
-btn.Size = UDim2.new(0.32, 0, 0.78, 0)
-btn.BackgroundColor3 = customColor or Theme.Cream
-btn.FontFace = Theme.FontOswaldB
-btn.Text = string.upper(btnText or "EXECUTE")
-btn.TextColor3 = Theme.CreamDarkText
-btn.TextScaled = true
-btn.Parent = row
-corner(btn, 0.5, 1)
-btn.MouseButton1Click:Connect(function() if callback then callback() end end)
-return btn
-end
--- Switch из дампа DoorsAdmin (Bg = RGB(204,147,121) Tr=0.35 + Stroke RGB(216,225,239) + круглый ползунок)
-function Cat:AddToggle(actionText, defaultState, callback)
-local state = defaultState == true
-local row = Instance.new("Frame")
-row.Name = "SwitchRow"
-row.Size = UDim2.new(1, 0, 0, 42)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-corner(row, 0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.Name = "ActionName"
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.75, 0, 0.75, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = actionText
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local btn = Instance.new("TextButton")
-btn.Name = "Button"
-btn.AnchorPoint = Vector2.new(1, 0.5)
-btn.Position = UDim2.new(0.985, 0, 0.5, 0)
-btn.Size = UDim2.new(0, 56, 0, 26)
-btn.BackgroundColor3 = state and Theme.SwitchOnBg or Theme.BgContainer
-btn.BackgroundTransparency = 0.35
-btn.Text = ""
-btn.AutoButtonColor = false
-btn.Parent = row
-corner(btn, 1, 0)
-stroke(btn, Theme.SwitchStroke, 2.5, 0)
-local knob = Instance.new("Frame")
-knob.Name = "Switch"
-knob.AnchorPoint = Vector2.new(0.5, 0.5)
-knob.Position = state and UDim2.new(0.76, 0, 0.5, 0) or UDim2.new(0.24, 0, 0.5, 0)
-knob.Size = UDim2.new(0.42, 0, 0.85, 0)
-knob.BackgroundColor3 = Theme.Cream
-knob.Parent = btn
-corner(knob, 1, 0)
-local kAsp = Instance.new("UIAspectRatioConstraint")
-kAsp.AspectRatio = 1
-kAsp.Parent = knob
-local function set(val, silent)
-state = val == true
-TweenService:Create(knob, TweenInfo.new(0.14), {
-Position = state and UDim2.new(0.76, 0, 0.5, 0) or UDim2.new(0.24, 0, 0.5, 0)
-}):Play()
-btn.BackgroundColor3 = state and Theme.SwitchOnBg or Theme.BgContainer
-if not silent and callback then callback(state) end
-end
-btn.MouseButton1Click:Connect(function() set(not state, false) end)
-return { Set = set, Get = function() return state end }
-end
-return Cat
-end
-return Window
-end
+
 return DoorsGuiBuilder
