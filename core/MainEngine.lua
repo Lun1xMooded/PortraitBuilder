@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Frozen Modular Core v2.2 — Portrait Tools Fix)
+-- core/MainEngine.lua (Frozen Modular Core v2.3 — Full Plugins + Portrait Tools Fix)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -40,7 +40,6 @@ return function(Import, Config)
     local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
     local UIWindow, UIToggles = nil, {}
 
-    -- Чистые реестры расширения для плагинов
     local Services = {}
     local ActionHandlers = {}
     local StateHandlers = {}
@@ -158,7 +157,6 @@ return function(Import, Config)
         tracks, activeClone, ENV.ActiveActorClone = {}, nil, nil
     end
 
-    -- Поддержка как стандартных R15-ригов, так и кастомных монстров со своими анимациями!
     local function setupRigTracks(clone)
         local customFolder = clone:FindFirstChild("CustomAnimations")
         if customFolder then
@@ -198,7 +196,6 @@ return function(Import, Config)
         clone.Parent = workspace
         activeClone, ENV.ActiveActorClone = clone, clone
 
-        -- Фикс: принудительно определяем Portrait и записываем атрибут в саму модель клона
         local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait") or (actorInfo.IsPortrait == true)
         clone:SetAttribute("IsPortrait", isPort)
 
@@ -210,11 +207,12 @@ return function(Import, Config)
             if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then neckMotor = d; break end
         end
 
-if clone:GetAttribute("NoTools") ~= true then
-RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
-end
-local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-if sCF then
+        if clone:GetAttribute("NoTools") ~= true then
+            RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
+        end
+
+        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+        if sCF then
 local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
 cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
 else
@@ -243,7 +241,6 @@ look = (look.Magnitude < 0.01) and Vector3.new(0, 0, -1) or look.Unit
 spawnClone(0, false, CFrame.lookAt(myRoot.Position, myRoot.Position + look))
 if myChar:GetAttribute("Crouching") == true then setCrouch(true) end
 end
--- Единый запуск любого режима (и из меню, и с клавиатуры, с поддержкой SpawnOverrides!)
 local function startModeById(mId, sub, autoSpawn)
 if not LoadedModes[mId] then return end
 if not activeClone then
@@ -282,7 +279,6 @@ updateToolDrivers()
 end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
--- Чистая система сервисов и плагинов
 RegisterService = function(name, svc) Services[name] = svc end,
 GetService = function(name) return Services[name] end,
 RegisterAction = function(name, fn) ActionHandlers[name] = fn end,
@@ -306,20 +302,25 @@ EngineAPI.RegisterState("MultiClone", function() return multiCloneMode end, func
 EngineAPI.RegisterState("Crouch", function() return isCrouching end, function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end)
 EngineAPI.RegisterState("HeadLook", function() return headLookOn end, function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end)
 EngineAPI.RegisterState("Jitter", function() return jitterOn end, function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end)
-
-
-
+-- Обязательная загрузка всех плагинов из Registry.Plugins
+for _, pluginPath in ipairs(Registry.Plugins or {}) do
+local pInit = Import(pluginPath)
+if type(pInit) == "function" then
+pInit(EngineAPI)
+else
+warn("[MemeActor] Плагин не загрузился:", pluginPath)
+end
+end
 for _, m in ipairs(Registry.ModeModules or {}) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(EngineAPI) end
 end
-if MenuController then
-UIWindow, UIToggles = MenuController.Build(Import, Registry, {
-Actions = ActionHandlers,
-States = StateHandlers,
-RunMode = startModeById,
-})
-end
+
+
+
+
+
+
 local K = {}
 for name, info in pairs(Registry.SystemKeys) do K[name] = resolveKey(info) end
 local Binds = {}
