@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Frozen Modular Core v2.1 — Zero-Hacks Plugin & Multi-Rig Architecture)
+-- core/MainEngine.lua (Frozen Modular Core v2.2 — Portrait Tools Fix)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -188,7 +188,7 @@ return function(Import, Config)
         if not multiCloneMode then removeAllClones()
         elseif activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate(); activeMode, activeSub = nil, nil end
 
-        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
         local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
         if type(builderFn) ~= "function" then return end
 
@@ -198,7 +198,10 @@ return function(Import, Config)
         clone.Parent = workspace
         activeClone, ENV.ActiveActorClone = clone, clone
 
-        local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait")
+        -- Фикс: принудительно определяем Portrait и записываем атрибут в саму модель клона
+        local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait") or (actorInfo.IsPortrait == true)
+        clone:SetAttribute("IsPortrait", isPort)
+
         rootOffset = clone:GetAttribute("RootOffset") or actorInfo.RootOffset or (isPort and 3.65 or 3.55)
 
         local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
@@ -207,7 +210,7 @@ return function(Import, Config)
             if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then neckMotor = d; break end
         end
 
-        if clone:GetAttribute("NoTools") ~= true then
+if clone:GetAttribute("NoTools") ~= true then
 RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
 end
 local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
@@ -272,7 +275,7 @@ IsHeadLookEnabled = function() return headLookOn end,
 SpawnClone = spawnClone, StartMode = startModeById,
 AttachTool = function(mirrored, skipTrack)
 if not activeClone or activeClone:GetAttribute("NoTools") == true then return end
-local isPort = activeClone:GetAttribute("IsPortrait") == true
+local isPort = (activeClone:GetAttribute("IsPortrait") == true)
 RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs)
 RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
 updateToolDrivers()
@@ -303,10 +306,9 @@ EngineAPI.RegisterState("MultiClone", function() return multiCloneMode end, func
 EngineAPI.RegisterState("Crouch", function() return isCrouching end, function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end)
 EngineAPI.RegisterState("HeadLook", function() return headLookOn end, function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end)
 EngineAPI.RegisterState("Jitter", function() return jitterOn end, function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end)
-for _, pluginPath in ipairs(Registry.Plugins or {}) do
-local pInit = Import(pluginPath)
-if type(pInit) == "function" then pInit(EngineAPI) end
-end
+
+
+
 for _, m in ipairs(Registry.ModeModules or {}) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(EngineAPI) end
