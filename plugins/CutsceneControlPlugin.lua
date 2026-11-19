@@ -1,6 +1,6 @@
 -- plugins/CutsceneControlPlugin.lua
--- Идеальная свобода в катсценах DOORS: синхронный поворот тела за камерой (приоритет 96 перед movement),
--- полная совместимость со щитком (InMinigame), шкафами (Hiding) и транспортом (SeatedInSeat)
+-- Идеальная свобода в катсценах DOORS (SeekIntroHotel, FigureEnd, FloorReplicated):
+-- подавляет freemouse/stopcam катсцены до и после movement, но не мешает щитку (camlock) и шкафам (Hiding)!
 
 return function(API)
     local Players = game:GetService("Players")
@@ -11,6 +11,7 @@ return function(API)
     local enabled = false
     local MainGameState = nil
     local PlayerControls = nil
+    local hbConn = nil
 
     task.spawn(function()
         local ps = LocalPlayer:WaitForChild("PlayerScripts", 5)
@@ -76,12 +77,15 @@ return function(API)
         local char = LocalPlayer.Character
         if not char then return end
 
-        -- Если игрок решает щиток (InMinigame), прячется в шкафу (Hiding) или сидит — НЕ мешаем игре!
-        local isBusy = (char:GetAttribute("InMinigame") == true)
+        local mg = findMainGame()
+
+        -- Если игрок решает щиток (camlock ~= nil или InMinigame), прячется в шкафу (Hiding) или сидит — НЕ мешаем!
+        local isInteracting = (char:GetAttribute("InMinigame") == true)
             or (char:GetAttribute("Hiding") == true)
             or (char:GetAttribute("SeatedInSeat") == true)
+            or (mg and mg.camlock ~= nil)
 
-        if isBusy then
+        if isInteracting then
             return
         end
 
@@ -89,14 +93,13 @@ return function(API)
             PlayerControls:Enable()
         end
 
-        local mg = findMainGame()
         if mg then
-            mg.stopcam = false
-            mg.freemouse = false
-            mg.disableMovement = false
-            mg.incutscene = false
-            mg.camlock = nil
-            mg.confusion = false
+            -- Подавляем только флаги катсцены (SeekIntroHotel, FigureEnd и др.)
+            if mg.stopcam == true then mg.stopcam = false end
+            if mg.freemouse == true then mg.freemouse = false end
+            if mg.disableMovement == true then mg.disableMovement = false end
+            if mg.incutscene == true then mg.incutscene = false end
+            if mg.confusion == true then mg.confusion = false end
 
             if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
                 mg.hideplayers = 0
@@ -129,7 +132,7 @@ return function(API)
             end
         end
 
-        -- Поворачиваем CollisionPart, HumanoidRootPart и BodyGyro ДО цикла movement DOORS (приоритет 96 > caminit 95, < movement 101)
+        -- Жёстко синхронизируем поворот тела и BodyGyro с углом камеры DOORS (mg.ax)
         local cam = workspace.CurrentCamera
         if cam and col and not (mg and mg.freecam) then
             local yawRad = (mg and mg.ax) and math.rad(mg.ax) or select(2, cam.CFrame:ToEulerAnglesYXZ())
@@ -159,11 +162,16 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            -- Приоритет 96: срабатывает сразу после caminit (95) и ДО movement (101), поэтому тело и камера всегда синхронны!
-            RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 96, stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (синхронный поворот тела + щиток и шкафы работают)")
+            -- Перехватываем ДО caminit (94), ДО movement (100) и в Heartbeat (после корутин катсцены!)
+            RunService:BindToRenderStep("MemeActorCutscenePreCam", 94, stepUnlocker)
+            RunService:BindToRenderStep("MemeActorCutscenePreMove", 100, stepUnlocker)
+            if hbConn then hbConn:Disconnect() end
+            hbConn = RunService.Heartbeat:Connect(stepUnlocker)
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (управление + щиток + шкафы)")
         else
-            RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
+            RunService:UnbindFromRenderStep("MemeActorCutscenePreCam")
+            RunService:UnbindFromRenderStep("MemeActorCutscenePreMove")
+            if hbConn then hbConn:Disconnect(); hbConn = nil end
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
         end
     end
