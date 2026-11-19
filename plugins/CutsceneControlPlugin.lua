@@ -1,6 +1,5 @@
 -- plugins/CutsceneControlPlugin.lua
--- Идеальная свобода в катсценах DOORS (SeekIntroHotel, FigureEnd, FloorReplicated):
--- подавляет freemouse/stopcam катсцены до и после movement, но не мешает щитку (camlock) и шкафам (Hiding)!
+-- Идеальная свобода в катсценах DOORS: жесткая синхронизация тела с камерой через BodyGyro + прямое движение от камеры
 
 return function(API)
     local Players = game:GetService("Players")
@@ -79,7 +78,7 @@ return function(API)
 
         local mg = findMainGame()
 
-        -- Если игрок решает щиток (camlock ~= nil или InMinigame), прячется в шкафу (Hiding) или сидит — НЕ мешаем!
+        -- Уступаем управление игре при решении щитка (camlock / InMinigame), в шкафу (Hiding) или сидя
         local isInteracting = (char:GetAttribute("InMinigame") == true)
             or (char:GetAttribute("Hiding") == true)
             or (char:GetAttribute("SeatedInSeat") == true)
@@ -94,7 +93,6 @@ return function(API)
         end
 
         if mg then
-            -- Подавляем только флаги катсцены (SeekIntroHotel, FigureEnd и др.)
             if mg.stopcam == true then mg.stopcam = false end
             if mg.freemouse == true then mg.freemouse = false end
             if mg.disableMovement == true then mg.disableMovement = false end
@@ -122,28 +120,48 @@ return function(API)
         if hrp and hrp.Anchored then hrp.Anchored = false end
         if col and col.Anchored then col.Anchored = false end
 
-        if hum and hum.Health > 0 then
-            hum.AutoRotate = false
-            if hum.PlatformStand then hum.PlatformStand = false end
-            local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
-            local targetSpeed = wantSprint and 24 or 15
-            if hum.WalkSpeed < targetSpeed then
-                hum.WalkSpeed = targetSpeed
-            end
-        end
-
-        -- Жёстко синхронизируем поворот тела и BodyGyro с углом камеры DOORS (mg.ax)
         local cam = workspace.CurrentCamera
         if cam and col and not (mg and mg.freecam) then
-            local yawRad = (mg and mg.ax) and math.rad(mg.ax) or select(2, cam.CFrame:ToEulerAnglesYXZ())
-            local targetRot = CFrame.Angles(0, yawRad, 0)
-            col.CFrame = CFrame.new(col.Position) * targetRot
-            if hrp then
-                hrp.CFrame = CFrame.new(hrp.Position) * targetRot
-            end
-            local gyro = col:FindFirstChildOfClass("BodyGyro")
-            if gyro then
-                gyro.CFrame = targetRot
+            local flatLook = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
+            local flatRight = cam.CFrame.RightVector * Vector3.new(1, 0, 1)
+
+            if flatLook.Magnitude > 0.01 then
+                flatLook = flatLook.Unit
+                flatRight = (flatRight.Magnitude > 0.01) and flatRight.Unit or Vector3.new(-flatLook.Z, 0, flatLook.X)
+
+                local lookCF = CFrame.lookAlong(col.Position, flatLook)
+                col.CFrame = lookCF
+                if hrp then
+                    hrp.CFrame = CFrame.new(hrp.Position) * lookCF.Rotation
+                end
+
+                -- Усиливаем BodyGyro, чтобы физика не крутила тело в другую сторону
+                local gyro = col:FindFirstChildOfClass("BodyGyro")
+                if gyro then
+                    gyro.MaxTorque = Vector3.new(0, 400000, 0)
+                    gyro.P = 25000
+                    gyro.CFrame = lookCF.Rotation
+                end
+
+                -- Вычисляем чистый вектор ходьбы от камеры (W = строго вперёд по взгляду)
+                if hum and hum.Health > 0 then
+                    hum.AutoRotate = false
+                    if hum.PlatformStand then hum.PlatformStand = false end
+
+                    local mv = PlayerControls and PlayerControls:GetMoveVector() or Vector3.zero
+                    if mv.Magnitude > 0.05 then
+                        local worldDir = (flatRight * mv.X - flatLook * mv.Z)
+                        if worldDir.Magnitude > 0.01 then
+                            hum:Move(worldDir.Unit, false)
+                        end
+                    end
+
+                    local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (mv.Magnitude > 0.1)
+                    local targetSpeed = wantSprint and 24 or 15
+                    if hum.WalkSpeed < targetSpeed then
+                        hum.WalkSpeed = targetSpeed
+                    end
+                end
             end
         end
 
@@ -162,16 +180,18 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            -- Перехватываем ДО caminit (94), ДО movement (100) и в Heartbeat (после корутин катсцены!)
             RunService:BindToRenderStep("MemeActorCutscenePreCam", 94, stepUnlocker)
-            RunService:BindToRenderStep("MemeActorCutscenePreMove", 100, stepUnlocker)
+            RunService:BindToRenderStep("MemeActorCutscenePostMove", 102, stepUnlocker)
             if hbConn then hbConn:Disconnect() end
             hbConn = RunService.Heartbeat:Connect(stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (управление + щиток + шкафы)")
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (усиленный BodyGyro + движение от камеры)")
         else
             RunService:UnbindFromRenderStep("MemeActorCutscenePreCam")
-            RunService:UnbindFromRenderStep("MemeActorCutscenePreMove")
+            RunService:UnbindFromRenderStep("MemeActorCutscenePostMove")
             if hbConn then hbConn:Disconnect(); hbConn = nil end
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.AutoRotate = true end
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
         end
     end
