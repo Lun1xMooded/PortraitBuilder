@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Pure Modular Core v1.0.2 — Pathfind StartNode Spawn)
+-- core/MainEngine.lua (Frozen Modular Core v2.1 — Zero-Hacks Plugin & Multi-Rig Architecture)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -14,32 +14,39 @@ return function(Import, Config)
     local MirrorLib      = Import("libs/MirrorLib.lua")
     local EffectsLib     = Import("libs/EffectsLib.lua")
     local RigLib         = Import("libs/RigLib.lua")
-    local CombatLib      = Import("libs/CombatLib.lua")
-    local FreecamLib     = Import("libs/FreecamLib.lua")
-    local PathfindLib    = Import("libs/PathfindLib.lua")
 
-    if not Registry or not MirrorLib or not EffectsLib or not RigLib or not CombatLib then
-        warn("[MemeActor] Ошибка загрузки библиотек!")
+    if not Registry or not MirrorLib or not EffectsLib or not RigLib then
+        warn("[MemeActor] Отсутствуют базовые модули!")
         return
     end
 
-    local BuildPortraitRig = ENV.BuildPortraitRig or Import("builders/PortraitBuilder.lua")
-    if type(BuildPortraitRig) == "function" then ENV.BuildPortraitRig = BuildPortraitRig end
+    local BuildersCache = {}
+    local function getBuilder(path)
+        if not BuildersCache[path] then BuildersCache[path] = Import(path) end
+        return BuildersCache[path]
+    end
 
-    local CustomBuildersCache = {}
     local function resolveKey(info)
         local k = Config.Keys and Config.Keys[info.ConfigKey]
         return (k and Enum.KeyCode[k]) or info.Fallback
     end
 
     local ACTOR_LIST = Registry.ActorList
-    local modeIdx, comboIdx = 1, 1
+    local modeIdx = 1
     local multiCloneMode, isSprint, isCrouching, jitterOn, headLookOn, faceCam = false, false, false, false, false, false
 
     local allClones, tracks, cachedToolSyncs = {}, {}, {}
     local activeClone, cloneCF, activeMode, activeSub = nil, nil, nil, nil
     local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
     local UIWindow, UIToggles = nil, {}
+
+    -- Чистые реестры расширения для плагинов
+    local Services = {}
+    local ActionHandlers = {}
+    local StateHandlers = {}
+    local SpawnOverrides = {}
+    local CleanupCallbacks = {}
+    local LoadedModes = {}
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType, rayParams.RespectCanCollide = Enum.RaycastFilterType.Exclude, true
@@ -151,6 +158,29 @@ return function(Import, Config)
         tracks, activeClone, ENV.ActiveActorClone = {}, nil, nil
     end
 
+    -- Поддержка как стандартных R15-ригов, так и кастомных монстров со своими анимациями!
+    local function setupRigTracks(clone)
+        local customFolder = clone:FindFirstChild("CustomAnimations")
+        if customFolder then
+            local hum = clone:FindFirstChildOfClass("Humanoid")
+            local anim = hum and (hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum))
+            local res = {}
+            if anim then
+                for _, name in ipairs({ "idle", "walk", "sprint", "crouch" }) do
+                    local a = customFolder:FindFirstChild(name, true)
+                    if a and a:IsA("Animation") then
+                        local tr = anim:LoadAnimation(a)
+                        tr.Looped = true
+                        res[name] = tr
+                    end
+                end
+                if res.idle then res.idle:Play(0.1) end
+            end
+            return res
+        end
+        return RigLib.SetupAnimations(clone, LocalPlayer.Character)
+    end
+
     local function spawnClone(dist, preserve, customCF)
         local sCF = customCF or (preserve and cloneCF or nil)
         local sMode, sSub, sCrouch = preserve and activeMode or nil, preserve and activeSub or nil, preserve and isCrouching or false
@@ -159,19 +189,17 @@ return function(Import, Config)
         elseif activeMode and activeMode.OnDeactivate then activeMode.OnDeactivate(); activeMode, activeSub = nil, nil end
 
         local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
-        local srcChar, clone = LocalPlayer.Character, nil
+        local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
+        if type(builderFn) ~= "function" then return end
 
-        if actorInfo.Type == "CustomBuilder" and actorInfo.Path then
-            local bFn = CustomBuildersCache[actorInfo.Path] or Import(actorInfo.Path)
-            if type(bFn) == "function" then CustomBuildersCache[actorInfo.Path] = bFn; clone = bFn(actorInfo.Variant) end
-        else
-            if not BuildPortraitRig then return end
-            clone = BuildPortraitRig(actorInfo.Variant or "PortraitLight")
-        end
+        local clone = builderFn(actorInfo.Variant)
         if not clone then return end
 
         clone.Parent = workspace
         activeClone, ENV.ActiveActorClone = clone, clone
+
+        local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait")
+        rootOffset = clone:GetAttribute("RootOffset") or actorInfo.RootOffset or (isPort and 3.65 or 3.55)
 
         local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
         local neckMotor = nil
@@ -179,25 +207,23 @@ return function(Import, Config)
             if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then neckMotor = d; break end
         end
 
-        local isPort = (actorInfo.Type == "Portrait")
-        RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
-
-        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-        rootOffset = isPort and 3.65 or 3.55
-
-        if sCF then
-            local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
-            cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
-        else
-            local cam = workspace.CurrentCamera
-            local flat = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
-            flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
-            local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
-            local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
-            cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
-        end
+        if clone:GetAttribute("NoTools") ~= true then
+RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
+end
+local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+if sCF then
+local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
+cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
+else
+local cam = workspace.CurrentCamera
+local flat = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
+flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
+local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
+local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
+cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
+end
 if root then root.CFrame = cloneCF end
-tracks = RigLib.SetupAnimations(clone, srcChar)
+tracks = setupRigTracks(clone)
 table.insert(allClones, {
 model = clone, cframe = cloneCF, head = headPart, neck = neckMotor,
 jitter = EffectsLib.CacheJitterParts(clone), tracks = tracks, isRagdoll = false
@@ -214,49 +240,24 @@ look = (look.Magnitude < 0.01) and Vector3.new(0, 0, -1) or look.Unit
 spawnClone(0, false, CFrame.lookAt(myRoot.Position, myRoot.Position + look))
 if myChar:GetAttribute("Crouching") == true then setCrouch(true) end
 end
-local function doClonePunch()
-if not activeClone then return end
-local cTool = activeClone:FindFirstChildOfClass("Tool")
-local mTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-if (not cTool or cTool.Name ~= "BoxingGloves") and mTool and mTool.Name == "BoxingGloves" then
-local info = ACTOR_LIST[modeIdx]
-RigLib.AttachTool(activeClone, false, info and info.Type == "Portrait", MirrorLib, cachedToolSyncs)
-RigLib.PlayToolTrack(activeClone, tracks, false)
-updateToolDrivers()
-task.wait(0.18)
-end
-comboIdx = CombatLib.PlayCloneSwing(activeClone, comboIdx)
-end
-local globalPunchDisconnect = CombatLib.BindPlayerPunch(function()
-if activeMode and activeMode.Name == "HardcoreChase" then return end
-local myRoot = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
-if not myRoot then return end
-for _, entry in ipairs(allClones) do
-if entry.model and entry.model.Parent and not entry.isRagdoll and entry.cframe then
-local toC = (entry.cframe.Position - myRoot.Position) * Vector3.new(1, 0, 1)
-if toC.Magnitude <= 10.0 then
-entry.isRagdoll = true
-local restoreFn = CombatLib.ApplyRagdoll(entry.model, toC.Unit, 45)
-task.delay(2.0, function()
-if restoreFn and entry.model and entry.model.Parent then
-local lCF = restoreFn()
-if lCF then
-local nCF = CFrame.lookAt(lCF.Position, Vector3.new(myRoot.Position.X, lCF.Y, myRoot.Position.Z))
-entry.cframe = nCF
-if entry.model == activeClone then cloneCF = nCF end
-local r = entry.model.PrimaryPart or entry.model:FindFirstChild("HumanoidRootPart")
-if r then r.CFrame = nCF end
+-- Единый запуск любого режима (и из меню, и с клавиатуры, с поддержкой SpawnOverrides!)
+local function startModeById(mId, sub, autoSpawn)
+if not LoadedModes[mId] then return end
+if not activeClone then
+local customCF = SpawnOverrides[mId] and SpawnOverridesmId or nil
+if customCF then
+spawnClone(0, false, customCF)
+else
+spawnClone((autoSpawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false)
 end
 end
-entry.isRagdoll = false
-end)
+setMode(LoadedModes[mId], sub)
 end
-end
-end
-end)
-local ModeAPI = {
+local EngineAPI = {
 Config = Config, Import = Import,
 GetClone = function() return activeClone end,
+GetAllClones = function() return allClones end,
+GetActiveMode = function() return activeMode end,
 GetCFrame = function() return cloneCF end,
 SetCFrame = function(cf)
 cloneCF = cf
@@ -268,68 +269,53 @@ GetFloorY = getFloorY, UpdateAnimation = updateAnim,
 GetSubMode = function() return activeSub end, SetSubMode = function(s) activeSub = s end,
 IsCrouching = function() return isCrouching end, SetCrouch = setCrouch,
 IsHeadLookEnabled = function() return headLookOn end,
+SpawnClone = spawnClone, StartMode = startModeById,
 AttachTool = function(mirrored, skipTrack)
-local info = ACTOR_LIST[modeIdx]
-RigLib.AttachTool(activeClone, mirrored, info and info.Type == "Portrait", MirrorLib, cachedToolSyncs)
+if not activeClone or activeClone:GetAttribute("NoTools") == true then return end
+local isPort = activeClone:GetAttribute("IsPortrait") == true
+RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs)
 RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
 updateToolDrivers()
 end,
 StopAllTracks = function() for _, t in pairs(tracks) do if t.IsPlaying then t:Stop(0.1) end end end,
 PlayIdle = function() if tracks.idle then tracks.idle:Play(0.1) end if tracks.tool then tracks.tool:Play(0.1) end end,
+-- Чистая система сервисов и плагинов
+RegisterService = function(name, svc) Services[name] = svc end,
+GetService = function(name) return Services[name] end,
+RegisterAction = function(name, fn) ActionHandlers[name] = fn end,
+RegisterState = function(name, getFn, setFn) StateHandlers[name] = { get = getFn, set = setFn } end,
+RegisterSpawnOverride = function(modeId, fn) SpawnOverrides[modeId] = fn end,
+OnCleanup = function(fn) table.insert(CleanupCallbacks, fn) end,
 }
-local LoadedModes = {}
-for _, m in ipairs(Registry.ModeModules) do
+EngineAPI.RegisterAction("SpawnFar", function() spawnClone(Config.SpawnDistanceFar, false) end)
+EngineAPI.RegisterAction("SpawnHere", spawnAtPlayer)
+EngineAPI.RegisterAction("SwitchActor", function()
+modeIdx = (modeIdx % #ACTOR_LIST) + 1
+print("[MemeActor] Облик:", ACTOR_LIST[modeIdx].Label)
+if activeClone and not multiCloneMode then spawnClone(Config.SpawnDistanceFar, true) end
+end)
+EngineAPI.RegisterAction("Rotate", function()
+faceCam = not faceCam
+if activeClone and cloneCF then EngineAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
+end)
+EngineAPI.RegisterAction("RemoveAll", removeAllClones)
+EngineAPI.RegisterState("MultiClone", function() return multiCloneMode end, function(v) multiCloneMode = v end)
+EngineAPI.RegisterState("Crouch", function() return isCrouching end, function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end)
+EngineAPI.RegisterState("HeadLook", function() return headLookOn end, function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end)
+EngineAPI.RegisterState("Jitter", function() return jitterOn end, function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end)
+for _, pluginPath in ipairs(Registry.Plugins or {}) do
+local pInit = Import(pluginPath)
+if type(pInit) == "function" then pInit(EngineAPI) end
+end
+for _, m in ipairs(Registry.ModeModules or {}) do
 local f = Import(m.Path)
-if type(f) == "function" then LoadedModes[m.Id] = f(ModeAPI) end
+if type(f) == "function" then LoadedModes[m.Id] = f(EngineAPI) end
 end
 if MenuController then
 UIWindow, UIToggles = MenuController.Build(Import, Registry, {
-Actions = {
-SpawnFar = function() spawnClone(Config.SpawnDistanceFar, false) end,
-SpawnHere = spawnAtPlayer,
-SwitchActor = function()
-modeIdx = (modeIdx % #ACTOR_LIST) + 1
-if activeClone and not multiCloneMode then spawnClone(Config.SpawnDistanceFar, true) end
-end,
-Rotate = function()
-faceCam = not faceCam
-if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
-end,
-RemoveAll = removeAllClones,
-Punch = function() task.spawn(doClonePunch) end,
-OpenRoomMap = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.OpenLayoutMap() end end,
-AddNodeHere = function()
-local pf = getgenv().MemePathfindLib or PathfindLib
-local myR = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
-if myR and pf then pf.AddNode(myR.Position - Vector3.new(0, 2.5, 0)) end
-end,
-AutoCarpet = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.AutoGenerateFromCarpet() end end,
-ClearNodes = function() local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.ClearNodes() end end,
-},
-States = {
-MultiClone  = { get = function() return multiCloneMode end, set = function(v) multiCloneMode = v end },
-Crouch      = { get = function() return isCrouching end, set = function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end },
-HeadLook    = { get = function() return headLookOn end, set = function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end },
-Jitter      = { get = function() return jitterOn end, set = function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end },
-Freecam     = { get = function() return FreecamLib and FreecamLib.Enabled or false end, set = function(v) if FreecamLib then FreecamLib.SetEnabled(v) end end },
-PathMarkers = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.ShowMarkers or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.SetMarkersVisible(v) end end },
-PathLoop    = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.LoopPath or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.LoopPath = v end end },
-PathSprint  = { get = function() local pf = getgenv().MemePathfindLib or PathfindLib; return pf and pf.SprintPath or false end, set = function(v) local pf = getgenv().MemePathfindLib or PathfindLib; if pf then pf.SprintPath = v end end },
-},
-RunMode = function(mId, sub, autoSpawn)
-if not LoadedModes[mId] then return end
-local pf = getgenv().MemePathfindLib or PathfindLib
-if mId == "Pathfind" and pf and #pf.Nodes > 0 then
-local sIdx = math.clamp(pf.StartNodeIndex or 1, 1, #pf.Nodes)
-local sPos = pf.Nodes[sIdx]
-if not activeClone then
-spawnClone(0, false, CFrame.new(sPos + Vector3.new(0, 3.6, 0)))
-end
-elseif not activeClone then
-spawnClone((autoSpawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false)
-end
-setMode(LoadedModes[mId], sub)
-end
+Actions = ActionHandlers,
+States = StateHandlers,
+RunMode = startModeById,
 })
 end
 local K = {}
@@ -345,31 +331,20 @@ if key == Enum.KeyCode.RightBracket or key == Enum.KeyCode.LeftBracket then
 if UIWindow then UIWindow:Toggle() end
 return
 end
-if key == K.Spawn then spawnClone(Config.SpawnDistanceFar, false)
-elseif key == K.SpawnHere then spawnAtPlayer()
+if key == K.Spawn then ActionHandlers.SpawnFar()
+elseif key == K.SpawnHere then ActionHandlers.SpawnHere()
 elseif key == K.MultiToggle then multiCloneMode = not multiCloneMode; if UIToggles.MultiClone then UIToggles.MultiClone.Set(multiCloneMode, true) end
-elseif key == K.SwitchActor then
-modeIdx = (modeIdx % #ACTOR_LIST) + 1
-if activeClone and not multiCloneMode then spawnClone(Config.SpawnDistanceFar, true) end
+elseif key == K.SwitchActor then ActionHandlers.SwitchActor()
 elseif key == K.PaceToggle then isSprint = not isSprint
-elseif key == K.Crouch then if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(not isCrouching)
-elseif key == K.JitterToggle then
-jitterOn = not jitterOn
-if UIToggles.Jitter then UIToggles.Jitter.Set(jitterOn, true) end
-if not jitterOn then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end
-elseif key == K.HeadLook then
-headLookOn = not headLookOn
-if UIToggles.HeadLook then UIToggles.HeadLook.Set(headLookOn, true) end
-for _, e in ipairs(allClones) do e.neckCF = nil end
-elseif key == K.Rotate then faceCam = not faceCam; if activeClone and cloneCF then ModeAPI.SetCFrame(cloneCF * CFrame.Angles(0, math.pi, 0)) end
-elseif key == K.PunchAction then task.spawn(doClonePunch)
-elseif key == K.Remove then removeAllClones()
+elseif key == K.Crouch then StateHandlers.Crouch.set(not isCrouching)
+elseif key == K.JitterToggle then StateHandlers.Jitter.set(not jitterOn); if UIToggles.Jitter then UIToggles.Jitter.Set(jitterOn, true) end
+elseif key == K.HeadLook then StateHandlers.HeadLook.set(not headLookOn); if UIToggles.HeadLook then UIToggles.HeadLook.Set(headLookOn, true) end
+elseif key == K.Rotate then ActionHandlers.Rotate()
+elseif key == K.PunchAction and ActionHandlers.Punch then ActionHandlers.Punch()
+elseif key == K.Remove then ActionHandlers.RemoveAll()
 else
 for _, b in ipairs(Binds) do
-if key == b.Key and LoadedModes[b.Id] then
-if not activeClone then spawnClone((b.Spawn == "Close") and Config.SpawnDistanceClose or Config.SpawnDistanceFar, false) end
-setMode(LoadedModes[b.Id], b.Sub); break
-end
+if key == b.Key then startModeById(b.Id, b.Sub, b.Spawn); break end
 end
 end
 end)
@@ -396,9 +371,8 @@ end
 end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
-if FreecamLib then FreecamLib.SetEnabled(false) end
+for _, fn in ipairs(CleanupCallbacks) do pcall(fn) end
 if UIWindow and UIWindow.Gui then UIWindow.Gui:Destroy() end
-if globalPunchDisconnect then globalPunchDisconnect() end
 removeAllClones()
 if inputConn then inputConn:Disconnect() end
 if renderConn then renderConn:Disconnect() end

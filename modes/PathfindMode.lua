@@ -2,7 +2,7 @@
 -- Движение клона строго по точкам маршрута начиная со стартовой точки (StartNodeIndex)
 
 return function(API)
-    local PathfindLib = getgenv().MemePathfindLib or API.Import("libs/PathfindLib.lua")
+    local PathfindLib = API.GetService("Pathfind") or API.Import("libs/PathfindLib.lua")
     local currentIdx = 1
     local velocity = Vector3.zero
 
