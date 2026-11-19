@@ -1,6 +1,5 @@
 -- plugins/ActorModsPlugin.lua
--- Глобальная кастомизация поведения Portrait поверх ЛЮБОГО режима:
--- кастомная скорость, нокауты в любом режиме, триггер открытия двери, скример-исчезновение и бинды F1 / F2
+-- Глобальные модификаторы Portrait + бинды F1 (бег по точкам) и F2 (прямой рывок + удар + убийство/нокаут)
 
 return function(API)
     local Players = game:GetService("Players")
@@ -16,11 +15,12 @@ return function(API)
         UseCustomSpeed = false,
         CustomSpeed = 48,
         AutoKnockout = false,
-        KnockoutPower = 85,
+        KillOnHit = false,
+        KnockoutPower = 90,
         AlwaysGloves = false,
         VanishOnHit = false,
         KeyPathRun = Enum.KeyCode.F1,
-        KeyAmbushRush = Enum.KeyCode.F2,
+        KeyStraightRush = Enum.KeyCode.F2,
     }
 
     local Sliders = {
@@ -28,8 +28,8 @@ return function(API)
         KnockoutPower = { get = function() return Mods.KnockoutPower end, set = function(v) Mods.KnockoutPower = v end },
     }
     local Keybinds = {
-        KeyPathRun    = { get = function() return Mods.KeyPathRun end,    set = function(k) Mods.KeyPathRun = k end },
-        KeyAmbushRush = { get = function() return Mods.KeyAmbushRush end, set = function(k) Mods.KeyAmbushRush = k end },
+        KeyPathRun      = { get = function() return Mods.KeyPathRun end,      set = function(k) Mods.KeyPathRun = k end },
+        KeyStraightRush = { get = function() return Mods.KeyStraightRush end, set = function(k) Mods.KeyStraightRush = k end },
     }
 
     getgenv().MemeCustomSliders = Sliders
@@ -43,15 +43,37 @@ return function(API)
         end
     end)
     API.RegisterState("AutoKnockout", function() return Mods.AutoKnockout end, function(v) Mods.AutoKnockout = v end)
+    API.RegisterState("KillOnHit",    function() return Mods.KillOnHit end,    function(v) Mods.KillOnHit = v end)
     API.RegisterState("AlwaysGloves", function() return Mods.AlwaysGloves end, function(v)
         Mods.AlwaysGloves = v
         if v and API.GetClone() then API.AttachTool(false, false) end
     end)
-    API.RegisterState("VanishOnHit", function() return Mods.VanishOnHit end, function(v) Mods.VanishOnHit = v end)
+    API.RegisterState("VanishOnHit",  function() return Mods.VanishOnHit end,  function(v) Mods.VanishOnHit = v end)
 
     local lastHitTick = 0
 
-    -- Фоновый цикл: применяет кастомную скорость к любому режиму и проверяет авто-нокаут при сближении
+    local function matchesBind(inp, bind)
+        if not bind or typeof(bind) ~= "EnumItem" then return false end
+        if bind.EnumType == Enum.KeyCode then
+            return inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == bind
+        elseif bind.EnumType == Enum.UserInputType then
+            return inp.UserInputType == bind
+        end
+        return false
+    end
+
+    local function triggerStraightHitRush()
+        Mods.UseCustomSpeed = true
+        Mods.AutoKnockout = true
+        Mods.AlwaysGloves = true
+
+        -- Запускаем прямой бег ("Locomotion", "Straight") со своей скоростью из слайдера
+        API.StartMode("Locomotion", "Straight", "Far")
+        task.defer(function()
+            API.AttachTool(false, false)
+        end)
+    end
+
     local stepConn = RunService.Heartbeat:Connect(function()
         if Mods.UseCustomSpeed then
             API.Config.WalkSpeed = Mods.CustomSpeed
@@ -65,7 +87,8 @@ return function(API)
             API.AttachTool(false, false)
         end
 
-        if Mods.AutoKnockout and CombatLib and (tick() - lastHitTick > 1.6) then
+        -- Проверка сближения: если возле игрока — бьёт, сносит с ног и (опционально) убивает
+        if Mods.AutoKnockout and CombatLib and (tick() - lastHitTick > 1.5) then
             local cRoot = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
             local myChar = LocalPlayer.Character
             local myRoot = myChar and (myChar:FindFirstChild("CollisionPart") or myChar.PrimaryPart)
@@ -74,8 +97,17 @@ return function(API)
                 if flatDist <= 5.5 then
                     lastHitTick = tick()
                     CombatLib.PlayCloneSwing(clone, 1)
+
                     task.delay(0.14, function()
                         CombatLib.KnockbackPlayer(cRoot.Position, Mods.KnockoutPower)
+
+                        if Mods.KillOnHit and myChar then
+                            local hum = myChar:FindFirstChildOfClass("Humanoid")
+                            if hum and hum.Health > 0 then
+                                hum.Health = 0
+                            end
+                        end
+
                         if Mods.VanishOnHit and clone and clone.Parent then
                             task.delay(0.35, function()
                                 if clone and clone.Parent then clone:Destroy() end
@@ -87,21 +119,13 @@ return function(API)
         end
     end)
 
-    -- Обработка горячих клавиш F1 (бег по точкам) и F2 (быстрый налёт с перчатками и нокаутом)
     local keyConn = UserInputService.InputBegan:Connect(function(inp, gp)
         if gp or UserInputService:GetFocusedTextBox() then return end
 
-        if Mods.KeyPathRun and inp.KeyCode == Mods.KeyPathRun then
+        if matchesBind(inp, Mods.KeyPathRun) then
             API.StartMode("Pathfind", nil, "Close")
-        elseif Mods.KeyAmbushRush and inp.KeyCode == Mods.KeyAmbushRush then
-            -- Включаем кастомную скорость + перчатки + авто-нокаут и запускаем погоню на тебя!
-            Mods.UseCustomSpeed = true
-            Mods.AutoKnockout = true
-            Mods.AlwaysGloves = true
-            API.StartMode("Locomotion", "Chase", "Far")
-            task.defer(function()
-                API.AttachTool(false, false)
-            end)
+        elseif matchesBind(inp, Mods.KeyStraightRush) then
+            triggerStraightHitRush()
         end
     end)
 

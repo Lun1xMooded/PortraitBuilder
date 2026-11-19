@@ -107,15 +107,16 @@ Registry.MenuCategories = {
     {
         Id = "CustomMods",
         Title = "Кастом",
-        Icon = "rbxassetid://18359551282",
+        Icon = "rbxassetid://7059346373",
         Items = {
-            { Type = "Section", Text = "Горячие клавиши (Бинды)" },
+            { Type = "Section", Text = "Горячие клавиши / Мышь (Бинды)" },
             { Type = "Keybind", Text = "Запустить бег по точкам",               BindKey = "KeyPathRun" },
-            { Type = "Keybind", Text = "Быстрый налёт в перчатках + нокаут",    BindKey = "KeyAmbushRush" },
+            { Type = "Keybind", Text = "Прямой бег + удар и убийство",          BindKey = "KeyStraightRush" },
             { Type = "Section", Text = "Глобальные настройки режимов Portrait" },
             { Type = "Toggle",  Text = "Своя скорость во всех режимах",         StateKey = "UseCustomSpeed" },
             { Type = "Slider",  Text = "Значение скорости (studs/s)",           SettingKey = "CustomSpeed",   Min = 5,  Max = 150 },
-            { Type = "Toggle",  Text = "Нокаут при сближении в любом режиме",   StateKey = "AutoKnockout" },
+            { Type = "Toggle",  Text = "Удар и нокаут возле игрока",            StateKey = "AutoKnockout" },
+            { Type = "Toggle",  Text = "Убивать при ударе (Kill on Hit)",       StateKey = "KillOnHit" },
             { Type = "Slider",  Text = "Сила удара / нокаута",                  SettingKey = "KnockoutPower", Min = 20, Max = 180 },
             { Type = "Toggle",  Text = "Всегда держать BoxingGloves в руках",   StateKey = "AlwaysGloves" },
             { Type = "Toggle",  Text = "Исчезать после удара (Скример)",        StateKey = "VanishAfterHit" },
@@ -126,7 +127,7 @@ Registry.MenuCategories = {
 function Registry.PrintStartupBanner(Config)
     local keys = Config.Keys or {}
     print(string.format(
-        "[MemeActor v%s] Загружено! [ [ / ] ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор | [%s] Зеркало | [F1] Точки | [F2] Налёт",
+        "[MemeActor v%s] Загружено! [ [ / ] ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор | [%s] Зеркало | [F1] Точки | [F2] Рывок",
         tostring(Config.Version),
         keys.Spawn or "Z",
         keys.SpawnHere or "P",
