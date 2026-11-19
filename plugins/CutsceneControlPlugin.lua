@@ -1,5 +1,5 @@
 -- plugins/CutsceneControlPlugin.lua
--- Полная свобода в катсценах DOORS без инверсии (сброс confusion + выравнивание тела по камере)
+-- Полная свобода в катсценах DOORS: поворот тела + BodyGyro за камерой и полная совместимость со шкафами (Hiding)
 
 return function(API)
     local Players = game:GetService("Players")
@@ -72,6 +72,13 @@ return function(API)
     local function stepUnlocker()
         if not enabled then return end
 
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        -- Если игрок прячется в шкафу / под кроватью или сидит, НЕ вмешиваемся в камеру и camlock!
+        local isHiding = char:GetAttribute("Hiding") == true
+        local isSeated = char:GetAttribute("SeatedInSeat") == true
+
         if PlayerControls and not PlayerControls.enabled then
             PlayerControls:Enable()
         end
@@ -82,10 +89,14 @@ return function(API)
             mg.freemouse = false
             mg.disableMovement = false
             mg.incutscene = false
-            mg.camlock = nil
-            mg.confusion = false -- Убираем инверсию WASD из Movement DOORS!
+            mg.confusion = false
             mg.chase = false
             mg.chaseMove = false
+
+            -- Сбрасываем camlock ТОЛЬКО когда игрок НЕ в шкафу и НЕ сидит
+            if not isHiding and not isSeated then
+                mg.camlock = nil
+            end
 
             if mg.hideplayers and mg.hideplayers ~= 0 and not mg.noclip then
                 mg.hideplayers = 0
@@ -95,43 +106,48 @@ return function(API)
             end
         end
 
-        local char = LocalPlayer.Character
-        if char then
-            if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", false) end
-            if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", false) end
-            if char:GetAttribute("Animating") then char:SetAttribute("Animating", false) end
-            if char:GetAttribute("AnimatingClient") then char:SetAttribute("AnimatingClient", false) end
-            if char:GetAttribute("Confusion") then char:SetAttribute("Confusion", nil) end
+        if char:GetAttribute("InCutscene") then char:SetAttribute("InCutscene", false) end
+        if char:GetAttribute("RestrictMovement") then char:SetAttribute("RestrictMovement", false) end
+        if char:GetAttribute("Animating") then char:SetAttribute("Animating", false) end
+        if char:GetAttribute("AnimatingClient") then char:SetAttribute("AnimatingClient", false) end
+        if char:GetAttribute("Confusion") then char:SetAttribute("Confusion", nil) end
 
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local col = char:FindFirstChild("CollisionPart")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local col = char:FindFirstChild("CollisionPart")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
 
+        if not isHiding and not isSeated then
             if hrp and hrp.Anchored then hrp.Anchored = false end
             if col and col.Anchored then col.Anchored = false end
+        end
 
-            if hum and hum.Health > 0 and not char:GetAttribute("Hiding") then
-                if hum.PlatformStand then hum.PlatformStand = false end
-                local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
-                local targetSpeed = wantSprint and 24 or 15
-                if hum.WalkSpeed < targetSpeed then
-                    hum.WalkSpeed = targetSpeed
+        if hum and hum.Health > 0 and not isHiding and not isSeated then
+            hum.AutoRotate = false
+            if hum.PlatformStand then hum.PlatformStand = false end
+            local wantSprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and (hum.MoveDirection.Magnitude > 0.1)
+            local targetSpeed = wantSprint and 24 or 15
+            if hum.WalkSpeed < targetSpeed then
+                hum.WalkSpeed = targetSpeed
+            end
+        end
+
+        -- Поворачиваем и CollisionPart, и его BodyGyro за камерой (чтобы тело всегда крутилось синхронно с камерой!)
+        local cam = workspace.CurrentCamera
+        if cam and col and not (mg and mg.freecam) and not isHiding and not isSeated then
+            local flatLook = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
+            if flatLook.Magnitude > 0.01 then
+                local lookCF = CFrame.lookAlong(col.Position, flatLook.Unit)
+                col.CFrame = lookCF
+                local gyro = col:FindFirstChildOfClass("BodyGyro")
+                if gyro then
+                    gyro.CFrame = lookCF.Rotation
                 end
             end
+        end
 
-            -- Выравниваем тело по направлению взгляда камеры (если не включена свободная камера)
-            local cam = workspace.CurrentCamera
-            if cam and col and not (mg and mg.freecam) and not char:GetAttribute("Hiding") then
-                local flatLook = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
-                if flatLook.Magnitude > 0.01 then
-                    col.CFrame = CFrame.lookAlong(col.Position, flatLook.Unit)
-                end
-            end
-
-            local head = char:FindFirstChild("Head")
-            if cam and head and (cam.CFrame.Position - head.Position).Magnitude < 2.2 then
-                hideFirstPersonHead(char)
-            end
+        local head = char:FindFirstChild("Head")
+        if cam and head and (cam.CFrame.Position - head.Position).Magnitude < 2.2 then
+            hideFirstPersonHead(char)
         end
 
         for _, p in ipairs(Players:GetPlayers()) do
@@ -144,9 +160,8 @@ return function(API)
     local function setEnabled(state)
         enabled = state == true
         if enabled then
-            -- Приоритет 102 срабатывает сразу ПОСЛЕ movement (101) DOORS, перезаписывая любую инверсию!
             RunService:BindToRenderStep("MemeActorCutsceneUnlocker", 102, stepUnlocker)
-            print("[CutsceneControl] Свобода в катсценах: ВКЛ (без инверсии)")
+            print("[CutsceneControl] Свобода в катсценах: ВКЛ (синхронный поворот тела + шкафы работают)")
         else
             RunService:UnbindFromRenderStep("MemeActorCutsceneUnlocker")
             print("[CutsceneControl] Свобода в катсценах: ВЫКЛ")
