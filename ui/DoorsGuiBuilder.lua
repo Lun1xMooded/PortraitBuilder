@@ -127,7 +127,7 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
     attrInfo.Size = UDim2.new(0.30, 0, 0.62, 0)
     attrInfo.BackgroundTransparency = 1
     attrInfo.FontFace = Theme.FontOswald
-    attrInfo.Text = subText or "Menu"
+    attrInfo.Text = subText or "Welcome to MemeActor!"
     attrInfo.TextColor3 = Theme.SubTitleColor
     attrInfo.TextScaled = true
     attrInfo.TextXAlignment = Enum.TextXAlignment.Left
