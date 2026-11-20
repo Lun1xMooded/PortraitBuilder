@@ -114,7 +114,7 @@ Registry.MenuCategories = {
     {
         Id = "CustomMods",
         Title = "Кастом",
-        Icon = "rbxassetid://18359551282",
+        Icon = "rbxassetid://7059346373",
         Items = {
             { Type = "Section", Text = "Горячие клавиши / Мышь (Бинды)" },
             { Type = "Keybind", Text = "Запустить бег по точкам",               BindKey = "KeyPathRun" },
