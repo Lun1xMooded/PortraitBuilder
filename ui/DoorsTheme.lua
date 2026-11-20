@@ -1,5 +1,5 @@
 -- ui/DoorsTheme.lua
--- Точная палитра, шрифты и константы из дампа DoorsAdmin
+-- Точная палитра DOORS и безопасные шрифты Enum.Font.Oswald (без падений Font.new в экзекуторах)
 
 return {
     BgContainer   = Color3.fromRGB(30, 17, 16),
@@ -12,9 +12,9 @@ return {
     SwitchStroke  = Color3.fromRGB(216, 225, 239),
     DangerBtn     = Color3.fromRGB(204, 68, 26),
 
-    FontOswald    = Font.new("rbxasset://fonts/families/Oswald.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
-    FontOswaldB   = Font.new("rbxasset://fonts/families/Oswald.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
-    FontTabHeavy  = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Normal),
+    FontOswald    = Font.fromEnum(Enum.Font.Oswald),
+    FontOswaldB   = Font.fromEnum(Enum.Font.Oswald),
+    FontTabHeavy  = Font.fromEnum(Enum.Font.Oswald),
 
     IconClose     = "rbxassetid://2195446979",
     IconCollapse  = "rbxassetid://18805592459",
