@@ -581,22 +581,24 @@ Sub = b.SubMode,
 Spawn = b.AutoSpawn,
 })
 end
-local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
-if gp or UserInputService:GetFocusedTextBox() then
-return
-end
-local key = inp.KeyCode
-if KeyMap[key] then
-KeyMapkey
-return
-end
-for _, b in ipairs(Binds) do
-if key == b.Key then
-startModeById(b.Id, b.Sub, b.Spawn)
-break
-end
-end
-end)
+    local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
+        if gp or UserInputService:GetFocusedTextBox() then
+            return
+        end
+        local key = inp.KeyCode
+        local actionFn = KeyMap[key]
+        if actionFn then
+            actionFn()
+            return
+        end
+        for _, b in ipairs(Binds) do
+            if key == b.Key then
+                startModeById(b.Id, b.Sub, b.Spawn)
+                break
+            end
+        end
+    end)
+
 local renderConn = RunService.RenderStepped:Connect(function(dt)
 if #allClones == 0 then
 return
