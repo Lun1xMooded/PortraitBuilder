@@ -66,6 +66,10 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
     local old = pgui:FindFirstChild("MemeActorDoorsAdmin")
     if old then old:Destroy() end
 
+    if getgenv().MemeGlobalBindConn then
+        pcall(function() getgenv().MemeGlobalBindConn:Disconnect() end)
+    end
+
     local sg = Instance.new("ScreenGui")
     sg.Name = "MemeActorDoorsAdmin"
     sg.ResetOnSpawn = false
@@ -127,7 +131,7 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
     attrInfo.Size = UDim2.new(0.30, 0, 0.62, 0)
     attrInfo.BackgroundTransparency = 1
     attrInfo.FontFace = Theme.FontOswald
-    attrInfo.Text = subText or "Welcome to MemeActor!"
+    attrInfo.Text = subText or "Menu"
     attrInfo.TextColor3 = Theme.SubTitleColor
     attrInfo.TextScaled = true
     attrInfo.TextXAlignment = Enum.TextXAlignment.Left
@@ -186,21 +190,25 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
         end
     end
 
-    local globalBindConn = UserInputService.InputBegan:Connect(function(inp, gp)
+    local globalBindConn = UserInputService.InputBegan:Connect(function(inp)
         if UserInputService:GetFocusedTextBox() then return end
         for _, slot in ipairs(Window.BindSlots) do
             local b = slot.bind
             if b and slot.callback then
                 local matched = false
-                if b.EnumType == Enum.KeyCode and inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == b and not gp then
+                if b.EnumType == Enum.KeyCode and inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == b then
                     matched = true
                 elseif b.EnumType == Enum.UserInputType and inp.UserInputType == b then
                     matched = true
                 end
-                if matched then slot.callback() end
+                if matched then
+                    slot.callback()
+                    break
+                end
             end
         end
     end)
+    getgenv().MemeGlobalBindConn = globalBindConn
 
     sg.Destroying:Connect(function()
         if globalBindConn then globalBindConn:Disconnect() end
@@ -226,11 +234,10 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
         local tabStroke = Instance.new("UIStroke", tabBtn)
         tabStroke.Color = Theme.Cream
         tabStroke.Thickness = 3
-        Instance.new("UIAspectRatioConstraint", tabBtn).AspectRatio = 1.05
-
-        local icon = Instance.new("ImageLabel")
-        icon.AnchorPoint = Vector2.new(0.5, 0.5)
-        icon.Position = UDim2.new(0.5, 0, 0.42, 0)
+Instance.new("UIAspectRatioConstraint", tabBtn).AspectRatio = 1.05
+local icon = Instance.new("ImageLabel")
+icon.AnchorPoint = Vector2.new(0.5, 0.5)
+icon.Position = UDim2.new(0.5, 0, 0.42, 0)
 icon.Size = UDim2.new(0.62, 0, 0.62, 0)
 icon.BackgroundTransparency = 1
 icon.Image = iconAsset or "rbxassetid://113075964705926"

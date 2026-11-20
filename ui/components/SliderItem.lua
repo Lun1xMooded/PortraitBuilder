@@ -2,46 +2,48 @@
 local UserInputService = game:GetService("UserInputService")
 
 return function(page, Ctx, text, minVal, maxVal, defaultVal, callback)
-    local Theme = Ctx.Theme
+    local Theme = Ctx.Theme or Ctx
     local curVal = math.clamp(defaultVal or minVal, minVal, maxVal)
 
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 44)
-    row.BackgroundColor3 = Theme.Cream
+    row.Size = UDim2.new(1, 0, 0, 46)
+    row.BackgroundColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
     row.BackgroundTransparency = 0.90
-    row.LayoutOrder = Ctx.NextOrder()
+    row.LayoutOrder = Ctx.NextOrder and Ctx.NextOrder() or 1
     row.Parent = page
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
     local lbl = Instance.new("TextLabel")
     lbl.AnchorPoint = Vector2.new(0, 0.5)
     lbl.Position = UDim2.new(0, 12, 0.5, 0)
-    lbl.Size = UDim2.new(0.54, 0, 1, 0)
+    lbl.Size = UDim2.new(0.54, 0, 0.74, 0)
     lbl.BackgroundTransparency = 1
     lbl.FontFace = Theme.FontOswald
     lbl.Text = text
-    lbl.TextColor3 = Theme.Cream
-    lbl.TextSize = 20
+    lbl.TextColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
+    lbl.TextScaled = true
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
+    Instance.new("UITextSizeConstraint", lbl).MaxTextSize = 26
 
     local valBox = Instance.new("TextLabel")
     valBox.AnchorPoint = Vector2.new(1, 0.5)
     valBox.Position = UDim2.new(0.67, 0, 0.5, 0)
-    valBox.Size = UDim2.new(0.11, 0, 0.68, 0)
-    valBox.BackgroundColor3 = Theme.Cream
+    valBox.Size = UDim2.new(0.11, 0, 0.72, 0)
+    valBox.BackgroundColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
     valBox.BackgroundTransparency = 0.55
     valBox.FontFace = Theme.FontOswald
     valBox.Text = tostring(math.round(curVal))
-    valBox.TextColor3 = Theme.Cream
-    valBox.TextSize = 18
+    valBox.TextColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
+    valBox.TextScaled = true
     valBox.Parent = row
     Instance.new("UICorner", valBox).CornerRadius = UDim.new(0, 6)
+    Instance.new("UITextSizeConstraint", valBox).MaxTextSize = 22
 
     local track = Instance.new("TextButton")
     track.AnchorPoint = Vector2.new(1, 0.5)
     track.Position = UDim2.new(1, -10, 0.5, 0)
-    track.Size = UDim2.new(0.29, 0, 0.22, 0)
+    track.Size = UDim2.new(0.29, 0, 0.24, 0)
     track.BackgroundColor3 = Color3.fromRGB(111, 95, 86)
     track.Text = ""
     track.AutoButtonColor = false
@@ -54,7 +56,7 @@ return function(page, Ctx, text, minVal, maxVal, defaultVal, callback)
 
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((curVal - minVal) / math.max(0.001, maxVal - minVal), 0, 1, 0)
-    fill.BackgroundColor3 = Theme.Cream
+    fill.BackgroundColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
     fill.BorderSizePixel = 0
     fill.Parent = track
     Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 4)
@@ -63,7 +65,7 @@ return function(page, Ctx, text, minVal, maxVal, defaultVal, callback)
     knob.AnchorPoint = Vector2.new(0.5, 0.5)
     knob.Position = UDim2.new(fill.Size.X.Scale, 0, 0.5, 0)
     knob.Size = UDim2.new(0, 12, 0, 22)
-    knob.BackgroundColor3 = Theme.Cream
+    knob.BackgroundColor3 = Theme.Cream or Color3.fromRGB(255, 222, 189)
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 4)
 
