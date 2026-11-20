@@ -281,8 +281,9 @@ return function(Import, Config)
             activeMode.OnDeactivate()
             activeMode = nil
             activeSub = nil
-end
-local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
+        end
+
+        local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
 local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
 if type(builderFn) ~= "function" then
 return
