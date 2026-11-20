@@ -327,13 +327,15 @@ local Binds = {}
 for _, b in ipairs(Registry.ModeBindings) do
 table.insert(Binds, { Key = resolveKey(b), Id = b.ModuleId, Sub = b.SubMode, Spawn = b.AutoSpawn })
 end
-local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
-if gp or UserInputService:GetFocusedTextBox() then return end
-local key = inp.KeyCode
-if key == Enum.KeyCode.RightBracket or key == Enum.KeyCode.LeftBracket then
-if UIWindow then UIWindow:Toggle() end
-return
-end
+    local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
+        if UserInputService:GetFocusedTextBox() then return end
+        local key = inp.KeyCode
+        if key == Enum.KeyCode.RightBracket or key == Enum.KeyCode.LeftBracket or key == Enum.KeyCode.RightControl then
+            if UIWindow then UIWindow:Toggle() end
+            return
+        end
+        if gp then return end
+
 if key == K.Spawn then ActionHandlers.SpawnFar()
 elseif key == K.SpawnHere then ActionHandlers.SpawnHere()
 elseif key == K.MultiToggle then multiCloneMode = not multiCloneMode; if UIToggles.MultiClone then UIToggles.MultiClone.Set(multiCloneMode, true) end
