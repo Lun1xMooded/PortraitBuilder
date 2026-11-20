@@ -1,4 +1,3 @@
--- Loader.lua для Lun1xMooded/PortraitBuilder
 local BASE_URL = "https://raw.githubusercontent.com/Lun1xMooded/PortraitBuilder/refs/heads/main/"
 
 local Cache = {}

@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Frozen Modular Core v3.1 — Clean Syntax & Registry Input)
+-- core/MainEngine.lua
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -281,8 +281,7 @@ return function(Import, Config)
             activeMode.OnDeactivate()
             activeMode = nil
             activeSub = nil
-        end
-
+end
 local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST
 local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
 if type(builderFn) ~= "function" then
