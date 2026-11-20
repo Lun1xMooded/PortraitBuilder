@@ -1,4 +1,7 @@
 -- core/MenuController.lua
+-- Собирает меню из Registry.MenuCategories и сам привязывает горячие клавиши открытия из Registry.MenuToggleKeys
+
+local UserInputService = game:GetService("UserInputService")
 local MenuController = {}
 
 function MenuController.Build(Import, Registry, Context)
@@ -6,13 +9,13 @@ function MenuController.Build(Import, Registry, Context)
     local Builder = Import("ui/DoorsGuiBuilder.lua")
     if not Theme or not Builder or not Registry or not Registry.MenuCategories then
         warn("[MenuController] Не загрузились Theme или Builder!")
-        return nil, {}
+        return nil, {}, nil
     end
 
     local toggles = {}
     local sliders = getgenv().MemeCustomSliders or {}
     local keybinds = getgenv().MemeCustomKeybinds or {}
-    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "[ [ / ] ] Меню")
+    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "[ [ / ] / RCtrl ] Меню")
 
     for _, catData in ipairs(Registry.MenuCategories) do
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
@@ -48,7 +51,19 @@ function MenuController.Build(Import, Registry, Context)
         end
     end
 
-    return uiWindow, toggles
+    -- Привязка клавиш открытия/закрытия меню напрямую из Registry.MenuToggleKeys (работает даже при gp == true!)
+    local toggleKeys = Registry.MenuToggleKeys or { Enum.KeyCode.LeftBracket, Enum.KeyCode.RightBracket, Enum.KeyCode.RightControl }
+    local toggleConn = UserInputService.InputBegan:Connect(function(inp)
+        if UserInputService:GetFocusedTextBox() then return end
+        for _, k in ipairs(toggleKeys) do
+            if inp.KeyCode == k then
+                uiWindow:Toggle()
+                return
+            end
+        end
+    end)
+
+    return uiWindow, toggles, toggleConn
 end
 
 return MenuController

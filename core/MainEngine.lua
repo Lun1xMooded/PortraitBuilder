@@ -1,4 +1,4 @@
--- core/MainEngine.lua (Frozen Modular Core v2.3 — Full Plugins + Portrait Tools Fix)
+-- core/MainEngine.lua (Frozen Modular Core v3.0 — Registry-Driven Input & Clean MenuController)
 return function(Import, Config)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -38,7 +38,7 @@ return function(Import, Config)
     local allClones, tracks, cachedToolSyncs = {}, {}, {}
     local activeClone, cloneCF, activeMode, activeSub = nil, nil, nil, nil
     local lastFloorPos, cachedFloorY, rootOffset = nil, nil, 3.55
-    local UIWindow, UIToggles = nil, {}
+    local UIWindow, UIToggles, menuToggleConn = nil, {}, nil
 
     local Services = {}
     local ActionHandlers = {}
@@ -209,10 +209,9 @@ return function(Import, Config)
 
         if clone:GetAttribute("NoTools") ~= true then
             RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
-        end
-
-        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-        if sCF then
+end
+local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+if sCF then
 local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
 cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
 else
@@ -302,55 +301,55 @@ EngineAPI.RegisterState("MultiClone", function() return multiCloneMode end, func
 EngineAPI.RegisterState("Crouch", function() return isCrouching end, function(v) if not activeClone then spawnClone(Config.SpawnDistanceClose, false) end setCrouch(v) end)
 EngineAPI.RegisterState("HeadLook", function() return headLookOn end, function(v) headLookOn = v; for _, e in ipairs(allClones) do e.neckCF = nil end end)
 EngineAPI.RegisterState("Jitter", function() return jitterOn end, function(v) jitterOn = v; if not v then for _, e in ipairs(allClones) do EffectsLib.ResetJitter(e.jitter) end end end)
--- Обязательная загрузка всех плагинов из Registry.Plugins
 for _, pluginPath in ipairs(Registry.Plugins or {}) do
 local pInit = Import(pluginPath)
-if type(pInit) == "function" then
-pInit(EngineAPI)
-else
-warn("[MemeActor] Плагин не загрузился:", pluginPath)
-end
+if type(pInit) == "function" then pInit(EngineAPI) end
 end
 for _, m in ipairs(Registry.ModeModules or {}) do
 local f = Import(m.Path)
 if type(f) == "function" then LoadedModes[m.Id] = f(EngineAPI) end
 end
-
-
-
-
-
-
-local K = {}
-for name, info in pairs(Registry.SystemKeys) do K[name] = resolveKey(info) end
+if MenuController then
+UIWindow, UIToggles, menuToggleConn = MenuController.Build(Import, Registry, {
+Actions = ActionHandlers,
+States = StateHandlers,
+RunMode = startModeById,
+})
+end
+-- Системные бинды из Registry (без хардкода кнопок открытия меню!)
+local SystemKeyActions = {
+Spawn        = function() ActionHandlers.SpawnFar() end,
+SpawnHere    = function() ActionHandlers.SpawnHere() end,
+MultiToggle  = function() multiCloneMode = not multiCloneMode; if UIToggles.MultiClone then UIToggles.MultiClone.Set(multiCloneMode, true) end end,
+SwitchActor  = function() ActionHandlers.SwitchActor() end,
+PaceToggle   = function() isSprint = not isSprint end,
+Crouch       = function() StateHandlers.Crouch.set(not isCrouching) end,
+JitterToggle = function() StateHandlers.Jitter.set(not jitterOn); if UIToggles.Jitter then UIToggles.Jitter.Set(jitterOn, true) end end,
+HeadLook     = function() StateHandlers.HeadLook.set(not headLookOn); if UIToggles.HeadLook then UIToggles.HeadLook.Set(headLookOn, true) end end,
+Rotate       = function() ActionHandlers.Rotate() end,
+PunchAction  = function() if ActionHandlers.Punch then ActionHandlers.Punch() end end,
+Remove       = function() ActionHandlers.RemoveAll() end,
+}
+local KeyMap = {}
+for name, info in pairs(Registry.SystemKeys) do
+local kc = resolveKey(info)
+if kc and SystemKeyActions[name] then
+KeyMap[kc] = SystemKeyActions[name]
+end
+end
 local Binds = {}
 for _, b in ipairs(Registry.ModeBindings) do
 table.insert(Binds, { Key = resolveKey(b), Id = b.ModuleId, Sub = b.SubMode, Spawn = b.AutoSpawn })
 end
-    local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
-        if UserInputService:GetFocusedTextBox() then return end
-        local key = inp.KeyCode
-        if key == Enum.KeyCode.RightBracket or key == Enum.KeyCode.LeftBracket or key == Enum.KeyCode.RightControl then
-            if UIWindow then UIWindow:Toggle() end
-            return
-        end
-        if gp then return end
-
-if key == K.Spawn then ActionHandlers.SpawnFar()
-elseif key == K.SpawnHere then ActionHandlers.SpawnHere()
-elseif key == K.MultiToggle then multiCloneMode = not multiCloneMode; if UIToggles.MultiClone then UIToggles.MultiClone.Set(multiCloneMode, true) end
-elseif key == K.SwitchActor then ActionHandlers.SwitchActor()
-elseif key == K.PaceToggle then isSprint = not isSprint
-elseif key == K.Crouch then StateHandlers.Crouch.set(not isCrouching)
-elseif key == K.JitterToggle then StateHandlers.Jitter.set(not jitterOn); if UIToggles.Jitter then UIToggles.Jitter.Set(jitterOn, true) end
-elseif key == K.HeadLook then StateHandlers.HeadLook.set(not headLookOn); if UIToggles.HeadLook then UIToggles.HeadLook.Set(headLookOn, true) end
-elseif key == K.Rotate then ActionHandlers.Rotate()
-elseif key == K.PunchAction and ActionHandlers.Punch then ActionHandlers.Punch()
-elseif key == K.Remove then ActionHandlers.RemoveAll()
-else
+local inputConn = UserInputService.InputBegan:Connect(function(inp, gp)
+if gp or UserInputService:GetFocusedTextBox() then return end
+local key = inp.KeyCode
+if KeyMap[key] then
+KeyMapkey
+return
+end
 for _, b in ipairs(Binds) do
 if key == b.Key then startModeById(b.Id, b.Sub, b.Spawn); break end
-end
 end
 end)
 local renderConn = RunService.RenderStepped:Connect(function(dt)
@@ -377,6 +376,7 @@ end)
 ENV.StopMemeActor = function()
 ENV.GardenVisibilityPatch = nil
 for _, fn in ipairs(CleanupCallbacks) do pcall(fn) end
+if menuToggleConn then menuToggleConn:Disconnect() end
 if UIWindow and UIWindow.Gui then UIWindow.Gui:Destroy() end
 removeAllClones()
 if inputConn then inputConn:Disconnect() end

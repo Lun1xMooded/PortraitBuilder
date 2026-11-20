@@ -10,6 +10,13 @@ Registry.Plugins = {
     "plugins/ActorModsPlugin.lua",
 }
 
+-- 0.5 Клавиши открытия / закрытия самого меню (обрабатываются в MenuController)
+Registry.MenuToggleKeys = {
+    Enum.KeyCode.LeftBracket,
+    Enum.KeyCode.RightBracket,
+    Enum.KeyCode.RightShift,
+}
+
 -- 1. Список обликов, переключаемых клавишей [G]
 Registry.ActorList = {
     { Id = "PortraitLight", Label = "Portrait Белый (Сток)", Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitLight", IsPortrait = true, RootOffset = 3.65 },
@@ -50,7 +57,7 @@ Registry.SystemKeys = {
     Remove       = { ConfigKey = "Remove",       Fallback = Enum.KeyCode.V },
 }
 
--- 5. Декларативная структура меню DOORS (открывается на [ или ])
+-- 5. Декларативная структура меню DOORS (открывается на [, ] или RightShift)
 Registry.MenuCategories = {
     {
         Id = "Actor",
@@ -107,7 +114,7 @@ Registry.MenuCategories = {
     {
         Id = "CustomMods",
         Title = "Кастом",
-        Icon = "rbxassetid://7059346373",
+        Icon = "rbxassetid://18359551282",
         Items = {
             { Type = "Section", Text = "Горячие клавиши / Мышь (Бинды)" },
             { Type = "Keybind", Text = "Запустить бег по точкам",               BindKey = "KeyPathRun" },
@@ -127,7 +134,7 @@ Registry.MenuCategories = {
 function Registry.PrintStartupBanner(Config)
     local keys = Config.Keys or {}
     print(string.format(
-        "[MemeActor v%s] Загружено! [ [ / ] ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор | [%s] Зеркало | [F1] Точки | [F2] Рывок",
+        "[MemeActor v%s] Загружено! [ [ / ] / RShift ] Меню | [%s] Спавн | [%s] В себе | [%s] Толпа | [%s] Облик | [%s] Хардкор | [%s] Зеркало | [F1] Точки | [F2] Рывок",
         tostring(Config.Version),
         keys.Spawn or "Z",
         keys.SpawnHere or "P",
