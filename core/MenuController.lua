@@ -12,8 +12,7 @@ function MenuController.Build(Import, Registry, Context)
 
     local toggles = {}
     local sliders = getgenv().MemeCustomSliders or {}
-    local keybinds = getgenv().MemeCustomKeybinds or {}
-    local uiWindow = Builder.Create(Theme, "MEME ACTOR", "Menu")
+    local uiWindow = Builder.Create(Import, Theme, "MEME ACTOR", "Menu")
 
     for _, catData in ipairs(Registry.MenuCategories) do
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
@@ -28,24 +27,23 @@ function MenuController.Build(Import, Registry, Context)
                         Context.RunMode(item.ModeId, item.SubMode, item.AutoSpawn)
                     end
                 end
-                catTab:AddButton(item.Text, item.ButtonText, actFn, item.Color, item.DefaultBind)
+                local syncId = item.SyncId or item.Action or (item.ModeId and (item.ModeId .. "_" .. tostring(item.SubMode)))
+                catTab:AddButton(item.Text, item.ButtonText, actFn, item.Color, item.DefaultBind, nil, syncId)
             elseif item.Type == "Toggle" and item.StateKey then
                 local st = Context.States[item.StateKey]
                 local defVal = st and st.get() or false
+                local syncId = item.SyncId or item.StateKey
                 toggles[item.StateKey] = catTab:AddToggle(item.Text, defVal, function(val)
                     local curSt = Context.States[item.StateKey]
                     if curSt and curSt.set then curSt.set(val) end
-                end, item.DefaultBind)
+                end, item.DefaultBind, nil, syncId)
             elseif item.Type == "Slider" and item.SettingKey and sliders[item.SettingKey] then
                 local sl = sliders[item.SettingKey]
                 catTab:AddSlider(item.Text, item.Min, item.Max, sl.get(), function(val)
                     sl.set(val)
                 end)
-            elseif item.Type == "Keybind" and item.BindKey and keybinds[item.BindKey] then
-                local kb = keybinds[item.BindKey]
-                catTab:AddKeybind(item.Text, kb.get(), function(newKey)
-                    kb.set(newKey)
-                end)
+            elseif item.Type == "Keybind" then
+                catTab:AddKeybind(item.Text, item.DefaultBind, item.OnChange, item.SyncId)
             end
         end
     end

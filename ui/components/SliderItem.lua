@@ -1,26 +1,27 @@
 -- ui/components/SliderItem.lua
 local UserInputService = game:GetService("UserInputService")
 
-return function(page, Theme, order, text, minVal, maxVal, defaultVal, callback)
+return function(page, Ctx, text, minVal, maxVal, defaultVal, callback)
+    local Theme = Ctx.Theme
     local curVal = math.clamp(defaultVal or minVal, minVal, maxVal)
 
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, 0, 0, 44)
     row.BackgroundColor3 = Theme.Cream
     row.BackgroundTransparency = 0.90
-    row.LayoutOrder = order
+    row.LayoutOrder = Ctx.NextOrder()
     row.Parent = page
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
     local lbl = Instance.new("TextLabel")
     lbl.AnchorPoint = Vector2.new(0, 0.5)
-    lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-    lbl.Size = UDim2.new(0.54, 0, 0.72, 0)
+    lbl.Position = UDim2.new(0, 12, 0.5, 0)
+    lbl.Size = UDim2.new(0.54, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.FontFace = Theme.FontOswald
     lbl.Text = text
     lbl.TextColor3 = Theme.Cream
-    lbl.TextScaled = true
+    lbl.TextSize = 20
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
 
@@ -33,13 +34,13 @@ return function(page, Theme, order, text, minVal, maxVal, defaultVal, callback)
     valBox.FontFace = Theme.FontOswald
     valBox.Text = tostring(math.round(curVal))
     valBox.TextColor3 = Theme.Cream
-    valBox.TextScaled = true
+    valBox.TextSize = 18
     valBox.Parent = row
     Instance.new("UICorner", valBox).CornerRadius = UDim.new(0, 6)
 
     local track = Instance.new("TextButton")
     track.AnchorPoint = Vector2.new(1, 0.5)
-    track.Position = UDim2.new(0.985, 0, 0.5, 0)
+    track.Position = UDim2.new(1, -10, 0.5, 0)
     track.Size = UDim2.new(0.29, 0, 0.22, 0)
     track.BackgroundColor3 = Color3.fromRGB(111, 95, 86)
     track.Text = ""

@@ -1,6 +1,5 @@
 -- ui/DoorsGuiBuilder.lua
 local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
@@ -40,10 +39,12 @@ local function listenForBind(onCaptured)
     end)
 end
 
-function DoorsGuiBuilder.Create(arg1, arg2, arg3, arg4)
-    local Theme = (type(arg1) == "table") and arg1 or arg2
-    local titleText = (type(arg1) == "table") and arg2 or arg3
-    local subText = (type(arg1) == "table") and arg3 or arg4
+function DoorsGuiBuilder.Create(Import, Theme, titleText, subText)
+    local SectionComp = Import("ui/components/SectionItem.lua")
+    local ButtonComp  = Import("ui/components/ButtonItem.lua")
+    local ToggleComp  = Import("ui/components/ToggleItem.lua")
+    local SliderComp  = Import("ui/components/SliderItem.lua")
+    local KeybindComp = Import("ui/components/KeybindItem.lua")
 
     local pgui = LocalPlayer:WaitForChild("PlayerGui")
     local old = pgui:FindFirstChild("MemeActorDoorsAdmin")
@@ -94,8 +95,8 @@ function DoorsGuiBuilder.Create(arg1, arg2, arg3, arg4)
 
     local titleLbl = Instance.new("TextLabel")
     titleLbl.AnchorPoint = Vector2.new(0, 0.5)
-    titleLbl.Position = UDim2.new(0, 0, 0.5, 0)
-    titleLbl.Size = UDim2.new(0.45, 0, 1, 0)
+    titleLbl.Position = UDim2.new(0.005, 0, 0.5, 0)
+    titleLbl.Size = UDim2.new(0.27, 0, 0.92, 0)
     titleLbl.BackgroundTransparency = 1
     titleLbl.FontFace = Theme.FontOswald
     titleLbl.Text = string.upper(titleText or "MEME ACTOR")
@@ -106,8 +107,8 @@ function DoorsGuiBuilder.Create(arg1, arg2, arg3, arg4)
 
     local attrInfo = Instance.new("TextLabel")
     attrInfo.AnchorPoint = Vector2.new(0, 0.5)
-    attrInfo.Position = UDim2.new(0.36, 0, 0.5, 0)
-    attrInfo.Size = UDim2.new(0.54, 0, 0.72, 0)
+    attrInfo.Position = UDim2.new(0.28, 0, 0.54, 0)
+    attrInfo.Size = UDim2.new(0.30, 0, 0.62, 0)
     attrInfo.BackgroundTransparency = 1
     attrInfo.FontFace = Theme.FontOswald
     attrInfo.Text = subText or "Menu"
@@ -139,23 +140,49 @@ function DoorsGuiBuilder.Create(arg1, arg2, arg3, arg4)
     tabList.HorizontalAlignment = Enum.HorizontalAlignment.Right
 
     local pagesFolder = Instance.new("Folder", container)
-    local Window = { Gui = sg, Container = container, Tabs = {}, ActiveBinds = {} }
+    local Window = { Gui = sg, Container = container, Tabs = {}, BindSlots = {}, SyncGroups = {} }
 
-    -- Глобальный слушатель всех переназначенных пользователем биндов (СКМ по кнопкам)
+    -- Единый менеджер биндов и визуальной синхронизации между вкладками
+    local function registerBindSlot(syncGroup, defaultBind, callback, visualUpdater)
+        if syncGroup and Window.SyncGroups[syncGroup] then
+            local slot = Window.SyncGroups[syncGroup]
+            if callback and not slot.callback then slot.callback = callback end
+            if visualUpdater then table.insert(slot.updaters, visualUpdater) end
+            return slot
+        end
+
+        local slot = {
+            bind = defaultBind,
+            callback = callback,
+            updaters = visualUpdater and { visualUpdater } or {}
+        }
+        table.insert(Window.BindSlots, slot)
+        if syncGroup then
+            Window.SyncGroups[syncGroup] = slot
+        end
+        return slot
+    end
+
+    local function updateBindSlot(slot, newBind)
+        if not slot then return end
+        slot.bind = newBind
+        for _, fn in ipairs(slot.updaters) do
+            fn(newBind)
+        end
+    end
+
     local globalBindConn = UserInputService.InputBegan:Connect(function(inp, gp)
         if UserInputService:GetFocusedTextBox() then return end
-        for _, entry in pairs(Window.ActiveBinds) do
-            local b = entry.bind
-            if b then
+        for _, slot in ipairs(Window.BindSlots) do
+            local b = slot.bind
+            if b and slot.callback then
                 local matched = false
                 if b.EnumType == Enum.KeyCode and inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == b and not gp then
                     matched = true
                 elseif b.EnumType == Enum.UserInputType and inp.UserInputType == b then
                     matched = true
                 end
-                if matched and entry.callback then
-                    entry.callback()
-                end
+                if matched then slot.callback() end
             end
         end
     end)
@@ -219,307 +246,44 @@ function DoorsGuiBuilder.Create(arg1, arg2, arg3, arg4)
         page.Visible = false
         page.Parent = pagesFolder
 
-        Instance.new("UIPadding", page).PaddingRight = UDim.new(0.015, 0)
-        local pList = Instance.new("UIListLayout", page)
-        pList.FillDirection = Enum.FillDirection.Vertical
-        pList.Padding = UDim.new(0, 8)
-        pList.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local Cat = { Button = tabBtn, Page = page, Icon = icon, Title = title, Stroke = tabStroke, Order = 0 }
-        local function nextOrd() Cat.Order = Cat.Order + 1; return Cat.Order end
-
-        local function activate()
-            for _, t in ipairs(Window.Tabs) do
-                t.Page.Visible = false
-                t.Button.BackgroundColor3 = Theme.BgContainer
-                t.Button.BackgroundTransparency = 0.25
-                t.Icon.ImageColor3 = Theme.Cream
-                t.Title.TextColor3 = Theme.Cream
-                t.Stroke.Transparency = 0.4
-            end
-            page.Visible = true
-            tabBtn.BackgroundColor3 = Theme.Cream
-            tabBtn.BackgroundTransparency = 0
-            icon.ImageColor3 = Theme.TabDarkIcon
+Instance.new("UIPadding", page).PaddingRight = UDim.new(0.015, 0)
+local pList = Instance.new("UIListLayout", page)
+pList.FillDirection = Enum.FillDirection.Vertical
+pList.Padding = UDim.new(0, 8)
+pList.SortOrder = Enum.SortOrder.LayoutOrder
+local Cat = { Button = tabBtn, Page = page, Icon = icon, Title = title, Stroke = tabStroke, Order = 0 }
+local Ctx = {
+Theme = Theme,
+NextOrder = function() Cat.Order = Cat.Order + 1; return Cat.Order end,
+FormatBind = formatBind,
+ListenForBind = listenForBind,
+RegisterBindSlot = registerBindSlot,
+UpdateBindSlot = updateBindSlot,
+}
+local function activate()
+for _, t in ipairs(Window.Tabs) do
+t.Page.Visible = false
+t.Button.BackgroundColor3 = Theme.BgContainer
+t.Button.BackgroundTransparency = 0.25
+t.Icon.ImageColor3 = Theme.Cream
+t.Title.TextColor3 = Theme.Cream
+t.Stroke.Transparency = 0.4
+end
+page.Visible = true
+tabBtn.BackgroundColor3 = Theme.Cream
+tabBtn.BackgroundTransparency = 0
+icon.ImageColor3 = Theme.TabDarkIcon
 title.TextColor3 = Theme.TabDarkIcon
 tabStroke.Transparency = 0
 end
 tabBtn.MouseButton1Click:Connect(activate)
 table.insert(Window.Tabs, Cat)
 if #Window.Tabs == 1 then activate() end
-function Cat:AddSection(secText)
-local hdr = Instance.new("Frame")
-hdr.Size = UDim2.new(1, 0, 0, 34)
-hdr.BackgroundColor3 = Theme.Cream
-hdr.BackgroundTransparency = 0.50
-hdr.LayoutOrder = nextOrd()
-hdr.Parent = page
-Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.9, 0, 0.72, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = string.upper(secText)
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = hdr
-end
--- Кнопка с форматом "SPAWN / [Z]" и поддержкой бинда на СКМ (колёсико мыши)
-function Cat:AddButton(text, btnText, callback, customColor, defaultBind, onBindChange)
-local baseTitle = string.upper(btnText or "EXECUTE")
-local curBind = defaultBind
-local listening = false
-local row = Instance.new("Frame")
-row.Size = UDim2.new(1, 0, 0, 42)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.60, 0, 0.75, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = text
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local btn = Instance.new("TextButton")
-btn.AnchorPoint = Vector2.new(1, 0.5)
-btn.Position = UDim2.new(0.985, 0, 0.5, 0)
-btn.Size = UDim2.new(0.35, 0, 0.78, 0)
-btn.BackgroundColor3 = customColor or Theme.Cream
-btn.FontFace = Theme.FontOswaldB
-btn.TextColor3 = Theme.CreamDarkText
-btn.TextScaled = true
-btn.Parent = row
-Instance.new("UICorner", btn).CornerRadius = UDim.new(0.5, 1)
-local bindRecord = { bind = curBind, callback = callback }
-table.insert(Window.ActiveBinds, bindRecord)
-local function refreshLabel()
-local bStr = formatBind(curBind)
-btn.Text = bStr and (baseTitle .. " / [" .. bStr .. "]") or baseTitle
-end
-refreshLabel()
-btn.MouseButton1Click:Connect(function()
-if not listening and callback then callback() end
-end)
--- Средняя кнопка мыши (СКМ) по кнопке включает режим бинда!
-btn.InputBegan:Connect(function(inp)
-if inp.UserInputType == Enum.UserInputType.MouseButton3 and not listening then
-listening = true
-btn.Text = "[ ЖМИ КЛАВИШУ ]"
-listenForBind(function(newBind)
-listening = false
-curBind = newBind
-bindRecord.bind = newBind
-refreshLabel()
-if onBindChange then onBindChange(newBind) end
-end)
-end
-end)
-return btn
-end
-function Cat:AddToggle(text, defaultState, callback, defaultBind, onBindChange)
-local state = defaultState == true
-local curBind = defaultBind
-local listening = false
-local row = Instance.new("Frame")
-row.Size = UDim2.new(1, 0, 0, 42)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.75, 0, 0.75, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local function refreshText()
-local bStr = formatBind(curBind)
-lbl.Text = bStr and (text .. " / [" .. bStr .. "]") or text
-end
-refreshText()
-local btn = Instance.new("TextButton")
-btn.AnchorPoint = Vector2.new(1, 0.5)
-btn.Position = UDim2.new(0.985, 0, 0.5, 0)
-btn.Size = UDim2.new(0, 56, 0, 26)
-btn.BackgroundColor3 = state and Theme.SwitchOnBg or Theme.BgContainer
-btn.BackgroundTransparency = 0.35
-btn.Text = ""
-btn.AutoButtonColor = false
-btn.Parent = row
-Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
-local st = Instance.new("UIStroke", btn)
-st.Color = Theme.SwitchStroke
-st.Thickness = 2.5
-local knob = Instance.new("Frame")
-knob.AnchorPoint = Vector2.new(0.5, 0.5)
-knob.Position = state and UDim2.new(0.76, 0, 0.5, 0) or UDim2.new(0.24, 0, 0.5, 0)
-knob.Size = UDim2.new(0.42, 0, 0.85, 0)
-knob.BackgroundColor3 = Theme.Cream
-knob.Parent = btn
-Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-Instance.new("UIAspectRatioConstraint", knob).AspectRatio = 1
-local function set(val, silent)
-state = val == true
-TweenService:Create(knob, TweenInfo.new(0.14), {
-Position = state and UDim2.new(0.76, 0, 0.5, 0) or UDim2.new(0.24, 0, 0.5, 0)
-}):Play()
-btn.BackgroundColor3 = state and Theme.SwitchOnBg or Theme.BgContainer
-if not silent and callback then callback(state) end
-end
-local bindRecord = { bind = curBind, callback = function() set(not state, false) end }
-table.insert(Window.ActiveBinds, bindRecord)
-btn.MouseButton1Click:Connect(function() set(not state, false) end)
--- СКМ по тумблеру или строке переназначает бинд
-row.InputBegan:Connect(function(inp)
-if inp.UserInputType == Enum.UserInputType.MouseButton3 and not listening then
-listening = true
-lbl.Text = text .. " / [ ЖМИ КЛАВИШУ ]"
-listenForBind(function(newBind)
-listening = false
-curBind = newBind
-bindRecord.bind = newBind
-refreshText()
-if onBindChange then onBindChange(newBind) end
-end)
-end
-end)
-return { Set = set, Get = function() return state end }
-end
-function Cat:AddSlider(text, minVal, maxVal, defaultVal, callback)
-local curVal = math.clamp(defaultVal or minVal, minVal, maxVal)
-local row = Instance.new("Frame")
-row.Size = UDim2.new(1, 0, 0, 44)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.54, 0, 0.72, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = text
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local valBox = Instance.new("TextLabel")
-valBox.AnchorPoint = Vector2.new(1, 0.5)
-valBox.Position = UDim2.new(0.67, 0, 0.5, 0)
-valBox.Size = UDim2.new(0.11, 0, 0.68, 0)
-valBox.BackgroundColor3 = Theme.Cream
-valBox.BackgroundTransparency = 0.55
-valBox.FontFace = Theme.FontOswald
-valBox.Text = tostring(math.round(curVal))
-valBox.TextColor3 = Theme.Cream
-valBox.TextScaled = true
-valBox.Parent = row
-Instance.new("UICorner", valBox).CornerRadius = UDim.new(0, 6)
-local track = Instance.new("TextButton")
-track.AnchorPoint = Vector2.new(1, 0.5)
-track.Position = UDim2.new(0.985, 0, 0.5, 0)
-track.Size = UDim2.new(0.29, 0, 0.22, 0)
-track.BackgroundColor3 = Color3.fromRGB(111, 95, 86)
-track.Text = ""
-track.AutoButtonColor = false
-track.Parent = row
-Instance.new("UICorner", track).CornerRadius = UDim.new(0, 4)
-local st = Instance.new("UIStroke", track)
-st.Color = Color3.fromRGB(80, 68, 62)
-st.Thickness = 2.5
-local fill = Instance.new("Frame")
-fill.Size = UDim2.new((curVal - minVal) / math.max(0.001, maxVal - minVal), 0, 1, 0)
-fill.BackgroundColor3 = Theme.Cream
-fill.BorderSizePixel = 0
-fill.Parent = track
-Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 4)
-local knob = Instance.new("Frame")
-knob.AnchorPoint = Vector2.new(0.5, 0.5)
-knob.Position = UDim2.new(fill.Size.X.Scale, 0, 0.5, 0)
-knob.Size = UDim2.new(0, 12, 0, 22)
-knob.BackgroundColor3 = Theme.Cream
-knob.Parent = track
-Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 4)
-local sliding = false
-local function updateFromX(mouseX)
-local rel = math.clamp((mouseX - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
-curVal = math.round(minVal + (maxVal - minVal) * rel)
-fill.Size = UDim2.new(rel, 0, 1, 0)
-knob.Position = UDim2.new(rel, 0, 0.5, 0)
-valBox.Text = tostring(curVal)
-if callback then callback(curVal) end
-end
-track.InputBegan:Connect(function(inp)
-if inp.UserInputType == Enum.UserInputType.MouseButton1 then sliding = true; updateFromX(inp.Position.X) end
-end)
-UserInputService.InputChanged:Connect(function(inp)
-if sliding and inp.UserInputType == Enum.UserInputType.MouseMovement then updateFromX(inp.Position.X) end
-end)
-UserInputService.InputEnded:Connect(function(inp)
-if inp.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
-end)
-end
-function Cat:AddKeybind(text, defaultBind, callback)
-local currentBind = defaultBind
-local listening = false
-local row = Instance.new("Frame")
-row.Size = UDim2.new(1, 0, 0, 42)
-row.BackgroundColor3 = Theme.Cream
-row.BackgroundTransparency = 0.90
-row.LayoutOrder = nextOrd()
-row.Parent = page
-Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-local lbl = Instance.new("TextLabel")
-lbl.AnchorPoint = Vector2.new(0, 0.5)
-lbl.Position = UDim2.new(0.015, 0, 0.5, 0)
-lbl.Size = UDim2.new(0.65, 0, 0.75, 0)
-lbl.BackgroundTransparency = 1
-lbl.FontFace = Theme.FontOswald
-lbl.Text = text
-lbl.TextColor3 = Theme.Cream
-lbl.TextScaled = true
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Parent = row
-local bindBtn = Instance.new("TextButton")
-bindBtn.AnchorPoint = Vector2.new(1, 0.5)
-bindBtn.Position = UDim2.new(0.985, 0, 0.5, 0)
-bindBtn.Size = UDim2.new(0.28, 0, 0.78, 0)
-bindBtn.BackgroundColor3 = Theme.Cream
-bindBtn.FontFace = Theme.FontOswaldB
-bindBtn.Text = formatBind(currentBind) or "NONE"
-bindBtn.TextColor3 = Theme.CreamDarkText
-bindBtn.TextScaled = true
-bindBtn.Parent = row
-Instance.new("UICorner", bindBtn).CornerRadius = UDim.new(0.45, 0)
-bindBtn.MouseButton1Click:Connect(function()
-if listening then return end
-listening = true
-bindBtn.Text = "[ ЖМИ КЛАВИШУ ]"
-listenForBind(function(newBind)
-listening = false
-currentBind = newBind
-bindBtn.Text = formatBind(currentBind) or "NONE"
-if callback then callback(currentBind) end
-end)
-end)
-end
+function Cat:AddSection(secText)                 return SectionComp(page, Ctx, secText) end
+function Cat:AddButton(t, bt, cb, col, db, ob, sg) return ButtonComp(page, Ctx, t, bt, cb, col, db, ob, sg) end
+function Cat:AddToggle(t, def, cb, db, ob, sg)     return ToggleComp(page, Ctx, t, def, cb, db, ob, sg) end
+function Cat:AddSlider(t, mn, mx, d, cb)           return SliderComp(page, Ctx, t, mn, mx, d, cb) end
+function Cat:AddKeybind(t, db, cb, sg)             return KeybindComp(page, Ctx, t, db, cb, sg) end
 return Cat
 end
 return Window
