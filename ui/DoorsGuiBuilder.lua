@@ -39,7 +39,23 @@ local function listenForBind(onCaptured)
     end)
 end
 
-function DoorsGuiBuilder.Create(Import, Theme, titleText, subText)
+function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
+    local Theme = {
+        BgContainer   = (rawTheme and rawTheme.BgContainer)   or Color3.fromRGB(30, 17, 16),
+        HeaderBg      = (rawTheme and rawTheme.HeaderBg)      or Color3.fromRGB(38, 25, 25),
+        Cream         = (rawTheme and rawTheme.Cream)         or Color3.fromRGB(255, 222, 189),
+        CreamDarkText = (rawTheme and rawTheme.CreamDarkText) or Color3.fromRGB(39, 20, 17),
+        TabDarkIcon   = (rawTheme and rawTheme.TabDarkIcon)   or Color3.fromRGB(84, 68, 61),
+        SubTitleColor = (rawTheme and rawTheme.SubTitleColor) or Color3.fromRGB(145, 103, 92),
+        SwitchOnBg    = (rawTheme and rawTheme.SwitchOnBg)    or Color3.fromRGB(204, 147, 121),
+        SwitchStroke  = (rawTheme and rawTheme.SwitchStroke)  or Color3.fromRGB(216, 225, 239),
+        DangerBtn     = (rawTheme and rawTheme.DangerBtn)     or Color3.fromRGB(204, 68, 26),
+        FontOswald    = (rawTheme and rawTheme.FontOswald)    or Font.fromEnum(Enum.Font.Oswald),
+        FontOswaldB   = (rawTheme and rawTheme.FontOswaldB)   or Font.fromEnum(Enum.Font.Oswald),
+        FontTabHeavy  = (rawTheme and rawTheme.FontTabHeavy)  or Font.fromEnum(Enum.Font.Oswald),
+        IconClose     = (rawTheme and rawTheme.IconClose)     or "rbxassetid://2195446979",
+    }
+
     local SectionComp = Import("ui/components/SectionItem.lua")
     local ButtonComp  = Import("ui/components/ButtonItem.lua")
     local ToggleComp  = Import("ui/components/ToggleItem.lua")
@@ -142,7 +158,6 @@ function DoorsGuiBuilder.Create(Import, Theme, titleText, subText)
     local pagesFolder = Instance.new("Folder", container)
     local Window = { Gui = sg, Container = container, Tabs = {}, BindSlots = {}, SyncGroups = {} }
 
-    -- Единый менеджер биндов и визуальной синхронизации между вкладками
     local function registerBindSlot(syncGroup, defaultBind, callback, visualUpdater)
         if syncGroup and Window.SyncGroups[syncGroup] then
             local slot = Window.SyncGroups[syncGroup]
@@ -216,36 +231,33 @@ function DoorsGuiBuilder.Create(Import, Theme, titleText, subText)
         local icon = Instance.new("ImageLabel")
         icon.AnchorPoint = Vector2.new(0.5, 0.5)
         icon.Position = UDim2.new(0.5, 0, 0.42, 0)
-        icon.Size = UDim2.new(0.62, 0, 0.62, 0)
-        icon.BackgroundTransparency = 1
-        icon.Image = iconAsset or "rbxassetid://113075964705926"
-        icon.ImageColor3 = Theme.Cream
-        icon.Parent = tabBtn
-
-        local title = Instance.new("TextLabel")
-        title.AnchorPoint = Vector2.new(0.5, 1)
-        title.Position = UDim2.new(0.5, 0, 0.96, 0)
-        title.Size = UDim2.new(0.92, 0, 0.24, 0)
-        title.BackgroundTransparency = 1
-        title.FontFace = Theme.FontTabHeavy
-        title.Text = string.upper(catTitle)
-        title.TextColor3 = Theme.Cream
-        title.TextScaled = true
-        title.Parent = tabBtn
-
-        local page = Instance.new("ScrollingFrame")
-        page.AnchorPoint = Vector2.new(0.5, 1)
-        page.Position = UDim2.new(0.5, 0, 0.98, 0)
-        page.Size = UDim2.new(0.965, 0, 0.885, 0)
-        page.BackgroundTransparency = 1
-        page.BorderSizePixel = 0
-        page.ScrollBarThickness = 5
-        page.ScrollBarImageColor3 = Theme.Cream
-        page.CanvasSize = UDim2.new(0, 0, 0, 0)
-        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        page.Visible = false
-        page.Parent = pagesFolder
-
+icon.Size = UDim2.new(0.62, 0, 0.62, 0)
+icon.BackgroundTransparency = 1
+icon.Image = iconAsset or "rbxassetid://113075964705926"
+icon.ImageColor3 = Theme.Cream
+icon.Parent = tabBtn
+local title = Instance.new("TextLabel")
+title.AnchorPoint = Vector2.new(0.5, 1)
+title.Position = UDim2.new(0.5, 0, 0.96, 0)
+title.Size = UDim2.new(0.92, 0, 0.24, 0)
+title.BackgroundTransparency = 1
+title.FontFace = Theme.FontTabHeavy
+title.Text = string.upper(catTitle)
+title.TextColor3 = Theme.Cream
+title.TextScaled = true
+title.Parent = tabBtn
+local page = Instance.new("ScrollingFrame")
+page.AnchorPoint = Vector2.new(0.5, 1)
+page.Position = UDim2.new(0.5, 0, 0.98, 0)
+page.Size = UDim2.new(0.965, 0, 0.885, 0)
+page.BackgroundTransparency = 1
+page.BorderSizePixel = 0
+page.ScrollBarThickness = 5
+page.ScrollBarImageColor3 = Theme.Cream
+page.CanvasSize = UDim2.new(0, 0, 0, 0)
+page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+page.Visible = false
+page.Parent = pagesFolder
 Instance.new("UIPadding", page).PaddingRight = UDim.new(0.015, 0)
 local pList = Instance.new("UIListLayout", page)
 pList.FillDirection = Enum.FillDirection.Vertical
