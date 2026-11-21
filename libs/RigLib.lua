@@ -37,7 +37,9 @@ function RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
         pcall(function() tracks.tool:Stop(0.1) end)
         tracks.tool = nil
     end
-    if skipToolTrack then return end
+    if skipToolTrack or getgenv().MemeLowerTools == true then
+        return
+    end
 
     local humanoid = clone and clone:FindFirstChildOfClass("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
@@ -176,7 +178,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
             end
         end
 
-        -- Запускаем анимацию удержания предмета СТРОГО после того, как предмет прикрепился к руке!
         if tracks then
             RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
         end

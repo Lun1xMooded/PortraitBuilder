@@ -100,6 +100,7 @@ Registry.MenuCategories = {
             { Type = "Toggle",  Text = "Убивать при ударе (Kill on Hit)",           StateKey = "KillOnHit",      SyncId = "KillOnHit" },
             { Type = "Slider",  Text = "Сила удара / нокаута",                      SettingKey = "KnockoutPower", Min = 20, Max = 180 },
             { Type = "Toggle",  Text = "Всегда держать BoxingGloves в руках",       StateKey = "AlwaysGloves",   SyncId = "AlwaysGloves" },
+            { Type = "Toggle",  Text = "Опустить предметы (без анимации)",          StateKey = "LowerTools",     SyncId = "LowerTools" },
             { Type = "Toggle",  Text = "Исчезать после удара (Скример)",            StateKey = "VanishAfterHit", SyncId = "VanishAfterHit" },
         }
     },
@@ -108,7 +109,7 @@ Registry.MenuCategories = {
         Title = "Бинды",
         Icon = "rbxassetid://7059346373",
         Items = {
-            { Type = "Section", Text = "Управление актёром (ЛКМ или СКМ для смены)" },
+            { Type = "Section", Text = "Управление актёром (Нажми ЛКМ или СКМ для смены)" },
             { Type = "Keybind", Text = "Заспавнить перед камерой",      SyncId = "SpawnFar",    DefaultBind = Enum.KeyCode.Z },
             { Type = "Keybind", Text = "Заспавнить в себе",             SyncId = "SpawnHere",   DefaultBind = Enum.KeyCode.P },
             { Type = "Keybind", Text = "Сменить облик",                 SyncId = "SwitchActor", DefaultBind = Enum.KeyCode.G },
@@ -119,8 +120,8 @@ Registry.MenuCategories = {
             { Type = "Keybind", Text = "Дрожь статуи",                  SyncId = "Jitter",      DefaultBind = Enum.KeyCode.Y },
             { Type = "Keybind", Text = "Удалить всех клонов",           SyncId = "RemoveAll",   DefaultBind = Enum.KeyCode.V },
             { Type = "Section", Text = "Режимы и бой" },
-            { Type = "Keybind", Text = "Режим Зеркала",                 SyncId = "Mirror_nil",           DefaultBind = Enum.KeyCode.R },
-			{ Type = "Keybind", Text = "Хардкорная погоня",             SyncId = "HardcoreChase_nil",    DefaultBind = Enum.KeyCode.Q },
+{ Type = "Keybind", Text = "Режим Зеркала",                 SyncId = "Mirror_nil",           DefaultBind = Enum.KeyCode.R },
+{ Type = "Keybind", Text = "Хардкорная погоня",             SyncId = "HardcoreChase_nil",    DefaultBind = Enum.KeyCode.Q },
 { Type = "Keybind", Text = "Обычные догонялки",             SyncId = "Locomotion_Chase",    DefaultBind = Enum.KeyCode.N },
 { Type = "Keybind", Text = "Прямой бег / ходьба",           SyncId = "Locomotion_Straight", DefaultBind = Enum.KeyCode.F },
 { Type = "Keybind", Text = "Режим Статуи",                  SyncId = "Statue_nil",           DefaultBind = Enum.KeyCode.H },
@@ -128,6 +129,7 @@ Registry.MenuCategories = {
 { Type = "Section", Text = "Кастомные сценарии и камера" },
 { Type = "Keybind", Text = "Бег по точкам маршрута",        SyncId = "Pathfind_nil",    DefaultBind = Enum.KeyCode.F1 },
 { Type = "Keybind", Text = "Прямой бег + удар и убийство",  SyncId = "StraightRush",    DefaultBind = Enum.KeyCode.F2 },
+{ Type = "Keybind", Text = "Опустить / Поднять предмет",    SyncId = "LowerTools",      DefaultBind = nil },
 { Type = "Keybind", Text = "Свободная камера (Freecam)",    SyncId = "Freecam",         DefaultBind = nil },
 { Type = "Keybind", Text = "Свобода в катсценах",           SyncId = "CutsceneFreedom", DefaultBind = nil },
 }

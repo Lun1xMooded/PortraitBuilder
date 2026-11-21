@@ -333,9 +333,8 @@ return function(Import, Config)
         end
 
         tracks = setupRigTracks(clone)
-        if clone:FindFirstChildOfClass("Tool") then
-            RigLib.PlayToolTrack(clone, tracks, false)
-            updateToolDrivers()
+        if clone:GetAttribute("NoTools") ~= true then
+            RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs, tracks, false)
         end
 
         table.insert(allClones, {
@@ -423,15 +422,15 @@ return headLookOn
 end,
 SpawnClone = spawnClone,
 StartMode = startModeById,
-AttachTool = function(mirrored, skipTrack)
-if not activeClone or activeClone:GetAttribute("NoTools") == true then
-return
-end
-local isPort = (activeClone:GetAttribute("IsPortrait") == true)
-RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs)
-RigLib.PlayToolTrack(activeClone, tracks, skipTrack)
-updateToolDrivers()
-end,
+        AttachTool = function(mirrored, skipTrack)
+            if not activeClone or activeClone:GetAttribute("NoTools") == true then
+                return
+            end
+            local isPort = (activeClone:GetAttribute("IsPortrait") == true)
+            RigLib.AttachTool(activeClone, mirrored, isPort, MirrorLib, cachedToolSyncs, tracks, skipTrack)
+            updateToolDrivers()
+        end,
+
 StopAllTracks = function()
 for _, t in pairs(tracks) do
 if t.IsPlaying then
