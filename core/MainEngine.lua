@@ -284,61 +284,76 @@ return function(Import, Config)
         end
 
         local actorInfo = ACTOR_LIST[modeIdx] or ACTOR_LIST[1]
-local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
-if type(builderFn) ~= "function" then
-return
-end
-local clone = builderFn(actorInfo.Variant)
-if not clone then
-return
-end
-clone.Parent = workspace
-activeClone = clone
-ENV.ActiveActorClone = clone
-local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait") or (actorInfo.IsPortrait == true)
-clone:SetAttribute("IsPortrait", isPort)
-rootOffset = clone:GetAttribute("RootOffset") or actorInfo.RootOffset or (isPort and 3.65 or 3.55)
-local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
-local neckMotor = nil
-for _, d in ipairs(clone:GetDescendants()) do
-if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
-neckMotor = d
-break
-end
-end
-if clone:GetAttribute("NoTools") ~= true then
-RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
-end
-local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-if sCF then
-local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
-cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
-else
-local cam = workspace.CurrentCamera
-local flat = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
-flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
-local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
-local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
-cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
-end
-if root then
-root.CFrame = cloneCF
-end
-tracks = setupRigTracks(clone)
-table.insert(allClones, {
-model = clone,
-cframe = cloneCF,
-head = headPart,
-neck = neckMotor,
-jitter = EffectsLib.CacheJitterParts(clone),
-tracks = tracks,
-isRagdoll = false,
-})
-setCrouch(sCrouch)
-if sMode then
-setMode(sMode, sSub)
-end
-end
+        local builderFn = getBuilder(actorInfo.Path or "builders/PortraitBuilder.lua")
+        if type(builderFn) ~= "function" then
+            return
+        end
+
+        local clone = builderFn(actorInfo.Variant)
+        if not clone then
+            return
+        end
+
+        clone.Parent = workspace
+        activeClone = clone
+        ENV.ActiveActorClone = clone
+
+        local isPort = (clone:GetAttribute("IsPortrait") == true) or (actorInfo.Type == "Portrait") or (actorInfo.IsPortrait == true)
+        clone:SetAttribute("IsPortrait", isPort)
+
+        rootOffset = clone:GetAttribute("RootOffset") or actorInfo.RootOffset or (isPort and 3.65 or 3.55)
+
+        local headPart = clone:FindFirstChild("FHead") or clone:FindFirstChild("Head")
+        local neckMotor = nil
+        for _, d in ipairs(clone:GetDescendants()) do
+            if (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) and d.Name == "Neck" then
+                neckMotor = d
+                break
+            end
+        end
+
+        if clone:GetAttribute("NoTools") ~= true then
+            RigLib.AttachTool(clone, false, isPort, MirrorLib, cachedToolSyncs)
+        end
+
+        local root = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+        if sCF then
+            local gy = getFloorY(sCF.Position, sCF.Position.Y, true)
+            cloneCF = CFrame.new(sCF.X, gy, sCF.Z) * sCF.Rotation
+        else
+            local cam = workspace.CurrentCamera
+            local flat = cam.CFrame.LookVector * Vector3.new(1, 0, 1)
+            flat = (flat.Magnitude < 0.01) and Vector3.new(0, 0, -1) or flat.Unit
+            local pos = cam.CFrame.Position + flat * (dist or Config.SpawnDistanceFar)
+            local refY = (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart) and LocalPlayer.Character.PrimaryPart.Position.Y or cam.CFrame.Position.Y
+            cloneCF = CFrame.new(pos.X, getFloorY(pos, refY, true), pos.Z) * CFrame.Angles(0, math.atan2(-flat.X, -flat.Z) + (faceCam and math.pi or 0), 0)
+        end
+        if root then
+            root.CFrame = cloneCF
+        end
+
+        tracks = setupRigTracks(clone)
+        if clone:FindFirstChildOfClass("Tool") then
+            RigLib.PlayToolTrack(clone, tracks, false)
+            updateToolDrivers()
+        end
+
+        table.insert(allClones, {
+            model = clone,
+            cframe = cloneCF,
+            head = headPart,
+            neck = neckMotor,
+            jitter = EffectsLib.CacheJitterParts(clone),
+            tracks = tracks,
+            isRagdoll = false,
+        })
+
+        setCrouch(sCrouch)
+        if sMode then
+            setMode(sMode, sSub)
+        end
+    end
+
 local function spawnAtPlayer()
 local myChar = LocalPlayer.Character
 local myRoot = myChar and (myChar:FindFirstChild("CollisionPart") or myChar.PrimaryPart or myChar:FindFirstChild("HumanoidRootPart"))
