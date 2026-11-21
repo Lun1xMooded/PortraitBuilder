@@ -31,7 +31,48 @@ local function clearOldTools(clone, cachedToolSyncs)
     end
 end
 
-function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedToolSyncs)
+function RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
+    if not tracks then return end
+    if tracks.tool then
+        pcall(function() tracks.tool:Stop(0.1) end)
+        tracks.tool = nil
+    end
+    if skipToolTrack then return end
+
+    local humanoid = clone and clone:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    local tool = clone and clone:FindFirstChildOfClass("Tool")
+    if not animator or not tool then return end
+
+    local chosen = nil
+    local fallbackAnim = nil
+
+    for _, d in ipairs(tool:GetDescendants()) do
+        if d:IsA("Animation") and d.AnimationId ~= "" then
+            local n = d.Name:lower()
+            if (n:find("idle") or n:find("hold")) and not n:find("equip") then
+                chosen = d
+                break
+            elseif not n:find("equip") and not n:find("use") and not n:find("swing") and not fallbackAnim then
+                fallbackAnim = d
+            end
+        end
+    end
+
+    chosen = chosen or fallbackAnim
+    if not chosen then
+        chosen = Instance.new("Animation")
+        chosen.AnimationId = "rbxassetid://507768375"
+    end
+
+    local tr = animator:LoadAnimation(chosen)
+    tr.Looped = true
+    tr.Priority = Enum.AnimationPriority.Action4
+    tr:Play(0.1)
+    tracks.tool = tr
+end
+
+function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedToolSyncs, tracks, skipToolTrack)
     currentAttachGen = currentAttachGen + 1
     local myGen = currentAttachGen
 
@@ -47,7 +88,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
     local srcLeftHand  = sourceChar:FindFirstChild("LeftHand") or sourceChar:FindFirstChild("Left Arm")
 
     task.spawn(function()
-        -- Даём DOORS 0.12 сек, чтобы прикрепить ОБА мотора (Handle + LeftHandle для отмычек и двуручных предметов)
         task.wait(0.12)
         if myGen ~= currentAttachGen or not clone.Parent or not sourceTool.Parent then return end
 
@@ -104,7 +144,6 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
         end
         clonedTool.Parent = clone
 
-        -- Удаляем старые моторы, привязанные к рукам игрока (чтобы LeftHandle не оставался привязан к игроку!)
         for _, desc in ipairs(clonedTool:GetDescendants()) do
             if desc:IsA("Motor6D") or desc:IsA("Weld") or desc:IsA("WeldConstraint") then
                 if not desc.Part0 or not desc.Part0:IsDescendantOf(clonedTool) or not desc.Part1 or not desc.Part1:IsDescendantOf(clonedTool) then
@@ -136,41 +175,12 @@ function RigLib.AttachTool(clone, isMirrored, isPortraitRig, MirrorLib, cachedTo
                 })
             end
         end
-    end)
-end
 
-function RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
-    if tracks.tool then
-        pcall(function() tracks.tool:Stop(0.1) end)
-        tracks.tool = nil
-    end
-    if skipToolTrack then return end
-
-    local humanoid = clone and clone:FindFirstChildOfClass("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    local tool = clone and clone:FindFirstChildOfClass("Tool")
-    if not animator or not tool then return end
-
-    local chosen = nil
-    for _, d in ipairs(tool:GetDescendants()) do
-        if d:IsA("Animation") and d.AnimationId ~= "" then
-            local n = d.Name:lower()
-            if (n:find("idle") or n:find("hold")) and not n:find("equip") then
-                chosen = d
-                break
-            end
+        -- Запускаем анимацию удержания предмета СТРОГО после того, как предмет прикрепился к руке!
+        if tracks then
+            RigLib.PlayToolTrack(clone, tracks, skipToolTrack)
         end
-    end
-    if not chosen then
-        chosen = Instance.new("Animation")
-        chosen.AnimationId = "rbxassetid://507768375"
-    end
-
-    local tr = animator:LoadAnimation(chosen)
-    tr.Looped = true
-    tr.Priority = Enum.AnimationPriority.Action4
-    tr:Play(0.1)
-    tracks.tool = tr
+    end)
 end
 
 function RigLib.SetupAnimations(clone, sourceChar)
