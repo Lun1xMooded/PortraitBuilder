@@ -3,11 +3,7 @@ local InsertService = game:GetService("InsertService")
 local RunService = game:GetService("RunService")
 
 local FIGUS_PARTS = {
-    -- Невидимый базовый R6-торс для корректной работы Animator (как в HonchoBuilder)
-    ["Torso"]          = { MeshId = "", Size = Vector3.new(2.0, 2.0, 1.0), Color = Color3.fromRGB(163, 162, 165), Mat = Enum.Material.Plastic, Transp = 1.00, CF = CFrame.new(0, 0, 0) },
-
-    -- Визуальные части тела Фигуса
-    ["FigusTorso"]     = { MeshId = "rbxassetid://10494023258", Size = Vector3.new(1.9891, 3.3459, 1.2096), Color = Color3.fromRGB(120, 82, 84),   Mat = Enum.Material.Slate, Transp = 0.00, CF = CFrame.new(0.0015, 0.0585, -0.0512) },
+    ["Torso"]          = { MeshId = "rbxassetid://10494023258", Size = Vector3.new(1.9891, 3.3459, 1.2096), Color = Color3.fromRGB(120, 82, 84),   Mat = Enum.Material.Slate, Transp = 0.00, CF = CFrame.new(0.0015, 0.0585, -0.0512) },
     ["RibCage"]        = { MeshId = "rbxassetid://10493991658", Size = Vector3.new(2.1772, 1.6896, 1.5890), Color = Color3.fromRGB(175, 155, 146), Mat = Enum.Material.Salt,  Transp = 0.00, CF = CFrame.new(0.0000, 0.5086, -0.0781, 1.0000, 0.0000, 0.0000, 0.0000, 0.9996, -0.0295, -0.0000, 0.0295, 0.9996) },
     ["LeftMiddleLeg"]  = { MeshId = "rbxassetid://10494026105", Size = Vector3.new(0.7077, 2.2821, 0.7260), Color = Color3.fromRGB(120, 82, 84),   Mat = Enum.Material.Slate, Transp = 0.00, CF = CFrame.new(-0.4458, -3.6759, -0.0938) },
     ["Blister"]        = { MeshId = "rbxassetid://10494027006", Size = Vector3.new(0.1824, 1.0968, 0.2607), Color = Color3.fromRGB(122, 106, 98),  Mat = Enum.Material.Foil,  Transp = 0.35, CF = CFrame.new(-0.3537, -3.8209, -0.4178) },
@@ -40,32 +36,29 @@ local FIGUS_PARTS = {
     ["LeftLowerLeg"]   = { MeshId = "rbxassetid://10494026266", Size = Vector3.new(0.7142, 2.2312, 0.7314), Color = Color3.fromRGB(120, 82, 84),   Mat = Enum.Material.Slate, Transp = 0.00, CF = CFrame.new(-0.4782, -5.6263, -0.0681) },
 }
 
+-- Оригинальная иерархия суставов точь-в-точь из дампа Studio (Torso напрямую в HumanoidRootPart!)
 local FIGUS_JOINTS = {
-    -- Стандартный R6 Root Hip (позволяет Animator двигать весь корпус Фигуса!)
-    { Name = "Root Hip",       Part0 = "HumanoidRootPart", Part1 = "Torso",          C0 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,0), C1 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,0) },
-
-    -- Основные суставы скелета Фигуса
-    { Name = "Torso",          Part0 = "Torso",            Part1 = "FigusTorso",     C0 = CFrame.new(0, 0, 0),                        C1 = CFrame.new(-0.0015, -0.0585, 0.0512) },
-    { Name = "Head",           Part0 = "FigusTorso",       Part1 = "Head",           C0 = CFrame.new(0.0069, 2.2283, -0.1856),        C1 = CFrame.new(0, 0, 0) },
-    { Name = "LeftUpperArm",   Part0 = "FigusTorso",       Part1 = "LeftUpperArm",   C0 = CFrame.new(-0.8844, 0.8313, 0.0170),       C1 = CFrame.new(1.0000, 0, 0) },
+    { Name = "Torso",          Part0 = "HumanoidRootPart", Part1 = "Torso",          C0 = CFrame.new(0, 0, 0),                        C1 = CFrame.new(-0.0015, -0.0585, 0.0512) },
+    { Name = "Head",           Part0 = "Torso",            Part1 = "Head",           C0 = CFrame.new(0.0069, 2.2283, -0.1856),        C1 = CFrame.new(0, 0, 0) },
+    { Name = "LeftUpperArm",   Part0 = "Torso",            Part1 = "LeftUpperArm",   C0 = CFrame.new(-0.8844, 0.8313, 0.0170),       C1 = CFrame.new(1.0000, 0, 0) },
     { Name = "LeftMiddleArm",  Part0 = "LeftUpperArm",     Part1 = "LeftMiddleArm",  C0 = CFrame.new(-1.0220, 0.0533, 0),            C1 = CFrame.new(1.4500, 0, 0) },
     { Name = "LeftLowerArm",   Part0 = "LeftMiddleArm",    Part1 = "LeftLowerArm",   C0 = CFrame.new(-1.4525, -0.0439, 0.0526),      C1 = CFrame.new(1.0000, 0, 0) },
     { Name = "LeftHand",       Part0 = "LeftLowerArm",     Part1 = "LeftHand",       C0 = CFrame.new(-1.0937, -0.0065, -0.0071),     C1 = CFrame.new(0.4000, 0, 0) },
-    { Name = "RightUpperArm",  Part0 = "FigusTorso",       Part1 = "RightUpperArm",  C0 = CFrame.new(0.7091, 0.7605, -0.1123),       C1 = CFrame.new(-1.1500, 0, 0) },
+    { Name = "RightUpperArm",  Part0 = "Torso",            Part1 = "RightUpperArm",  C0 = CFrame.new(0.7091, 0.7605, -0.1123),       C1 = CFrame.new(-1.1500, 0, 0) },
     { Name = "RightMiddleArm", Part0 = "RightUpperArm",    Part1 = "RightMiddleArm", C0 = CFrame.new(1.2261, 0.0376, -0.0455),       C1 = CFrame.new(-1.3500, 0, 0) },
     { Name = "RightLowerArm",  Part0 = "RightMiddleArm",   Part1 = "RightLowerArm",  C0 = CFrame.new(1.4158, -0.0257, -0.0324),      C1 = CFrame.new(-1.1000, 0, 0) },
     { Name = "RightHand",      Part0 = "RightLowerArm",    Part1 = "RightHand",      C0 = CFrame.new(0.9895, -0.0065, -0.0200),      C1 = CFrame.new(-0.4500, 0, 0) },
-    { Name = "LeftUpperLeg",   Part0 = "FigusTorso",       Part1 = "LeftUpperLeg",   C0 = CFrame.new(-0.5292, -1.4694, -0.0049),     C1 = CFrame.new(-0.1393, 0.6000, 0) },
-{ Name = "LeftMiddleLeg",  Part0 = "LeftUpperLeg",     Part1 = "LeftMiddleLeg",  C0 = CFrame.new(-0.0574, -0.6650, -0.0376),     C1 = CFrame.new(0, 1.0000, 0) },
-{ Name = "LeftLowerLeg",   Part0 = "LeftMiddleLeg",    Part1 = "LeftLowerLeg",   C0 = CFrame.new(-0.0323, -0.9505, 0.0257),      C1 = CFrame.new(0, 1.0000, 0) },
-{ Name = "LeftFoot",       Part0 = "LeftLowerLeg",     Part1 = "LeftFoot",       C0 = CFrame.new(-0.0201, -0.6580, 0.0064),      C1 = CFrame.new(0, 0.4000, 0) },
-{ Name = "RightUpperLeg",  Part0 = "FigusTorso",       Part1 = "RightUpperLeg",  C0 = CFrame.new(0.4015, -1.4651, -0.0557),      C1 = CFrame.new(0, 0.5500, 0) },
+    { Name = "LeftUpperLeg",   Part0 = "Torso",            Part1 = "LeftUpperLeg",   C0 = CFrame.new(-0.5292, -1.4694, -0.0049),     C1 = CFrame.new(-0.1393, 0.6000, 0) },
+    { Name = "LeftMiddleLeg",  Part0 = "LeftUpperLeg",     Part1 = "LeftMiddleLeg",  C0 = CFrame.new(-0.0574, -0.6650, -0.0376),     C1 = CFrame.new(0, 1.0000, 0) },
+    { Name = "LeftLowerLeg",   Part0 = "LeftMiddleLeg",    Part1 = "LeftLowerLeg",   C0 = CFrame.new(-0.0323, -0.9505, 0.0257),      C1 = CFrame.new(0, 1.0000, 0) },
+    { Name = "LeftFoot",       Part0 = "LeftLowerLeg",     Part1 = "LeftFoot",       C0 = CFrame.new(-0.0201, -0.6580, 0.0064),      C1 = CFrame.new(0, 0.4000, 0) },
+{ Name = "RightUpperLeg",  Part0 = "Torso",            Part1 = "RightUpperLeg",  C0 = CFrame.new(0.4015, -1.4651, -0.0557),      C1 = CFrame.new(0, 0.5500, 0) },
 { Name = "RightMiddleLeg", Part0 = "RightUpperLeg",    Part1 = "RightMiddleLeg", C0 = CFrame.new(0.0061, -0.5942, -0.0550),      C1 = CFrame.new(0, 0.9500, 0) },
 { Name = "RightLowerLeg",  Part0 = "RightMiddleLeg",   Part1 = "RightLowerLeg",  C0 = CFrame.new(-0.0587, -0.9853, 0.0376),      C1 = CFrame.new(0, 0.9500, 0) },
 { Name = "RightFoot",      Part0 = "RightLowerLeg",    Part1 = "RightFoot",      C0 = CFrame.new(0.0073, -0.8223, 0.0064),       C1 = CFrame.new(0, 0.4000, 0) },
 }
 local FIGUS_WELDS = {
-{ Part0 = "FigusTorso",     Part1 = "RibCage" },
+{ Part0 = "Torso",          Part1 = "RibCage" },
 { Part0 = "Head",           Part1 = "Blisters" },
 { Part0 = "Head",           Part1 = "Gums" },
 { Part0 = "Head",           Part1 = "Veins" },
@@ -106,7 +99,7 @@ end
 local function buildFigusModel()
 local model = Instance.new("Model")
 model.Name = "Figus_MemeClone"
-model:SetAttribute("RootOffset", 7.15)
+model:SetAttribute("RootOffset", 6.45)
 model:SetAttribute("NoTools", true)
 local hrp = Instance.new("Part")
 hrp.Name = "HumanoidRootPart"
@@ -171,7 +164,7 @@ spot.Parent = mouthAtt
 end
 local hum = Instance.new("Humanoid")
 hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-hum.HipHeight = 5.15
+hum.HipHeight = 4.45
 hum.EvaluateStateMachine = false
 hum.Parent = model
 local animator = Instance.new("Animator")
@@ -188,7 +181,7 @@ end
 addAnim("idle",   "rbxassetid://18539828651")
 addAnim("walk",   "rbxassetid://18539834115")
 addAnim("sprint", "rbxassetid://8465893113")
--- Только звуки шагов при движении
+-- Перехватываем все запускаемые треки и отключаем конфликтующие с низким весом (0.001)
 local stepSound = Instance.new("Sound")
 stepSound.Name = "FigusFootstep"
 stepSound.SoundId = "rbxassetid://8465836233"
@@ -211,6 +204,12 @@ if stepDist >= 5.2 then
 stepDist = 0
 stepSound.PlaybackSpeed = 0.95 + math.random() * 0.15
 stepSound:Play()
+end
+end
+-- Если MainEngine держит трек с весом <= 0.05 — ставим ему вес 0, чтобы он не тянул руки в T-pose!
+for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+if tr.WeightTarget <= 0.05 and tr.WeightCurrent > 0 then
+tr:AdjustWeight(0, 0)
 end
 end
 end)
