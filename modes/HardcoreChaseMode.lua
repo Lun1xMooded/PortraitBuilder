@@ -1,5 +1,5 @@
 -- modes/HardcoreChaseMode.lua
--- Хардкорные догонялки [Q]: скорость (WalkSpeed - 3), нокаут 2 сек, медленное подкрадывание во время форы
+-- Хардкорные догонялки [Q]: скорость (WalkSpeed - 3), нокаут 2 сек, медленное подкрадывание во время форы и точный пол для высоких ригов
 
 return function(API)
     local Players = game:GetService("Players")
@@ -20,8 +20,21 @@ return function(API)
     local PUNCH_HIT_RANGE = 10.0
     local RETREAT_DISTANCE = 12
     local GRACE_SECONDS = 5.0
-    local RAGDOLL_SECONDS = 2.0 -- Задержка нокаута ровно 2 секунды
-    local CREEP_SPEED = 3.5     -- Медленное подкрадывание во время форы
+    local RAGDOLL_SECONDS = 2.0
+    local CREEP_SPEED = 3.5
+
+    local function getCloneOffset(clone)
+        return (clone and clone:GetAttribute("RootOffset")) or 3.65
+    end
+
+    local function smoothLookCF(currentCF, pos, lookDir, dt)
+        local flatDir = Vector3.new(lookDir.X, 0, lookDir.Z)
+        if flatDir.Magnitude < 0.05 then
+            return CFrame.new(pos) * currentCF.Rotation
+        end
+        local targetRot = CFrame.lookAt(Vector3.zero, flatDir.Unit, Vector3.yAxis)
+        return CFrame.new(pos) * currentCF.Rotation:Lerp(targetRot, math.clamp(dt * 12, 0, 1))
+    end
 
     local function triggerKill(myChar, clonePos)
         if killTriggered then return end
@@ -72,7 +85,7 @@ return function(API)
             if punchDisconnect then punchDisconnect() end
             punchDisconnect = CombatLib.BindPlayerPunch(onPlayerBoxingPunch)
 
-            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 3 (12 при 15).")
+            print("[HardcoreChase] Режим АКТИВИРОВАН! Скорость = твоя - 3.")
         end,
 
         OnDeactivate = function()
@@ -91,15 +104,18 @@ return function(API)
             API.UpdateAnimation(0, false)
         end,
 
-        OnStep = function(dt, cloneCFrame, root, myRoot, refY)
+        OnStep = function(dt, cloneCFrame, root, myRoot)
             local myChar = LocalPlayer.Character
-            if not myChar or not myRoot then return end
+            local clone = API.GetClone()
+            if not myChar or not myRoot or not clone then return end
 
             local hum = myChar:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health <= 0 then
                 API.UpdateAnimation(0, false)
                 return
             end
+
+            local off = getCloneOffset(clone)
 
             -- 0. РЭГДОЛЛ 2 СЕКУНДЫ ПОСЛЕ НОКАУТА
             if ragdollTimer > 0 then
@@ -108,8 +124,10 @@ return function(API)
                     local landedCF = restoreFromRagdoll()
                     restoreFromRagdoll = nil
                     if landedCF then
-                        local flatLook = Vector3.new(myRoot.Position.X, landedCF.Y, myRoot.Position.Z)
-                        API.SetCFrame(CFrame.lookAt(landedCF.Position, flatLook))
+                        local exactY = API.GetFloorY(landedCF.Position, landedCF.Position.Y + off, true, off)
+                        local fixedPos = Vector3.new(landedCF.X, exactY, landedCF.Z)
+                        local flatLook = Vector3.new(myRoot.Position.X, exactY, myRoot.Position.Z)
+                        API.SetCFrame(CFrame.lookAt(fixedPos, flatLook, Vector3.yAxis))
                     end
                     graceTimer = GRACE_SECONDS
                     lastCountdownInt = -1
@@ -119,7 +137,7 @@ return function(API)
             end
 
             local isHiding = myChar:GetAttribute("Hiding") == true
-            local flatToPlayer = (myRoot.Position - cloneCFrame.Position) * Vector3.new(1, 0, 1)
+            local flatToPlayer = Vector3.new(myRoot.Position.X - cloneCFrame.Position.X, 0, myRoot.Position.Z - cloneCFrame.Position.Z)
             local dist = flatToPlayer.Magnitude
             local dirToPlayer = (dist > 0.01) and flatToPlayer.Unit or cloneCFrame.LookVector
 
@@ -133,19 +151,18 @@ return function(API)
                     velocity = velocity:Lerp(-dirToPlayer * 7, math.clamp(dt * 6, 0, 1))
                     API.UpdateAnimation(velocity.Magnitude, false)
                     local nextPos = cloneCFrame.Position + velocity * dt
-                    local floorY = API.GetFloorY(nextPos, refY, false)
-                    local lookTarget = Vector3.new(myRoot.Position.X, floorY, myRoot.Position.Z)
-                    API.SetCFrame(CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), lookTarget))
+                    local floorY = API.GetFloorY(nextPos, cloneCFrame.Position.Y, false, off)
+                    API.SetCFrame(smoothLookCF(cloneCFrame, Vector3.new(nextPos.X, floorY, nextPos.Z), dirToPlayer, dt))
                 else
                     velocity = velocity:Lerp(Vector3.zero, math.clamp(dt * 8, 0, 1))
                     API.UpdateAnimation(0, false)
-                    local lookTarget = Vector3.new(myRoot.Position.X, cloneCFrame.Position.Y, myRoot.Position.Z)
-                    API.SetCFrame(cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 6, 0, 1)))
+                    local floorY = API.GetFloorY(cloneCFrame.Position, cloneCFrame.Position.Y, false, off)
+                    API.SetCFrame(smoothLookCF(cloneCFrame, Vector3.new(cloneCFrame.X, floorY, cloneCFrame.Z), dirToPlayer, dt))
                 end
                 return
             end
 
-            -- 2. ФОРА 5 СЕКУНД (клон потихоньку крадётся к тебе, а потом резко разгоняется!)
+            -- 2. ФОРА 5 СЕКУНД
             if wasHiding then
                 wasHiding = false
                 graceTimer = GRACE_SECONDS
@@ -161,9 +178,8 @@ return function(API)
                     velocity = velocity:Lerp(dirToPlayer * CREEP_SPEED, math.clamp(dt * 6, 0, 1))
                     API.UpdateAnimation(velocity.Magnitude, false)
                     local nextPos = cloneCFrame.Position + velocity * dt
-                    local floorY = API.GetFloorY(nextPos, refY, false)
-                    local lookAtPos = Vector3.new(nextPos.X + velocity.X, floorY, nextPos.Z + velocity.Z)
-                    API.SetCFrame(CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), lookAtPos))
+                    local floorY = API.GetFloorY(nextPos, cloneCFrame.Position.Y, false, off)
+                    API.SetCFrame(smoothLookCF(cloneCFrame, Vector3.new(nextPos.X, floorY, nextPos.Z), velocity, dt))
                 else
                     API.UpdateAnimation(0, false)
                 end
@@ -179,12 +195,12 @@ return function(API)
                 return
             end
 
-            -- 3. АКТИВНАЯ ХАРДКОРНАЯ ПОГОНЯ (Скорость = WalkSpeed игрока - 3, т.е. 12 при 15)
-            local playerWalkSpeed = hum.WalkSpeed or 15
+            -- 3. АКТИВНАЯ ХАРДКОРНАЯ ПОГОНЯ
+            local playerWalkSpeed = (hum.WalkSpeed > 1) and hum.WalkSpeed or 15
             local cloneSpeed = math.max(4, playerWalkSpeed - 3)
 
             if dist <= KILL_DISTANCE then
-                comboIdx = CombatLib.PlayCloneSwing(API.GetClone(), comboIdx)
+                comboIdx = CombatLib.PlayCloneSwing(clone, comboIdx)
                 triggerKill(myChar, cloneCFrame.Position)
                 return
             end
@@ -193,8 +209,8 @@ return function(API)
             API.UpdateAnimation(velocity.Magnitude, cloneSpeed >= 16)
 
             local nextPos = cloneCFrame.Position + velocity * dt
-            local floorY = API.GetFloorY(nextPos, refY, false)
-            API.SetCFrame(CFrame.lookAt(Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.new(nextPos.X + velocity.X, floorY, nextPos.Z + velocity.Z)))
+            local floorY = API.GetFloorY(nextPos, cloneCFrame.Position.Y, false, off)
+            API.SetCFrame(smoothLookCF(cloneCFrame, Vector3.new(nextPos.X, floorY, nextPos.Z), velocity, dt))
         end
     }
 end
