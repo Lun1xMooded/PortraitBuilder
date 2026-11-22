@@ -9,6 +9,7 @@ local hasCashmere = cashmereVar ~= nil and cashmereVar:IsA("MaterialVariant")
 
 local HONCHO_PARTS = {
     -- Невидимые базовые R6-части
+	    RootPart   = { MeshId = "", Size = Vector3.new(1.8864, 1.8864, 0.9432), Color = Color3.fromRGB(0, 0, 0), Mat = Enum.Material.Plastic, MatVar = "", Transp = 1.00, CF = CFrame.new(0, 0, 0) },
     Torso      = { MeshId = "", Size = Vector3.new(2.0000, 2.0000, 1.0000), Color = Color3.fromRGB(163, 162, 165), Mat = Enum.Material.Plastic, MatVar = "", Transp = 1.00, CF = CFrame.new(0, 0, 0) },
     RightArmR6 = { Name = "Right Arm", MeshId = "", Size = Vector3.new(1.0000, 2.0000, 1.0000), Color = Color3.fromRGB(163, 162, 165), Mat = Enum.Material.Plastic, MatVar = "", Transp = 1.00, CF = CFrame.new(1.5, 0, 0) },
     LeftArmR6  = { Name = "Left Arm",  MeshId = "", Size = Vector3.new(1.0000, 2.0000, 1.0000), Color = Color3.fromRGB(163, 162, 165), Mat = Enum.Material.Plastic, MatVar = "", Transp = 1.00, CF = CFrame.new(-1.5, 0, 0) },
@@ -78,6 +79,8 @@ RightFootAccents = { MeshId = "rbxassetid://129579987929102", Size = Vector3.new
 }
 -- Точные суставы Motor6D и Weld с C0/C1 из раздела 2 дампа!
 local EXACT_JOINTS = {
+{ Class = "Motor6D", Name = "RootJoint",      Part0 = "HumanoidRootPart", Part1 = "RootPart",   C0 = CFrame.new(0,0,0), C1 = CFrame.new(0,0,0) },
+{ Class = "Motor6D", Name = "Pelvis",         Part0 = "RootPart",         Part1 = "Pelvis",     C0 = CFrame.new(0.0000,-1.8815,-0.1001), C1 = CFrame.new(0,0,0) },
 { Class = "Motor6D", Name = "Root Hip",       Part0 = "HumanoidRootPart", Part1 = "Torso",      C0 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,0), C1 = CFrame.new(0,0,0,-1,0,0,0,0,1,0,1,0) },
 { Class = "Motor6D", Name = "Pelvis",         Part0 = "HumanoidRootPart", Part1 = "Pelvis",     C0 = CFrame.new(0.0000,-1.8815,-0.1001), C1 = CFrame.new(0,0,0) },
 { Class = "Motor6D", Name = "Left Shoulder",  Part0 = "Torso",            Part1 = "Left Arm",   C0 = CFrame.new(-1,0.5,0,0,0,-1,0,1,0,1,0,0), C1 = CFrame.new(0.5,0.5,0,0,0,-1,0,1,0,1,0,0) },
