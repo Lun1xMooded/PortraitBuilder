@@ -40,10 +40,9 @@ return function(variant, Import)
         end
     end
     if not HonchoData then
-        warn("[HonchoBuilder] Не загрузился builders/honcho/HonchoData.lua! Проверь путь файла на GitHub.")
+        warn("[HonchoBuilder] Не загрузился builders/honcho/HonchoData.lua!")
         return nil
     end
-
 
     local model = Instance.new("Model")
     model.Name = "HonchoActorClone"
@@ -53,7 +52,7 @@ return function(variant, Import)
     local parts = {}
 
     for _, info in ipairs(HonchoData.Parts) do
-        local name, size, color, mat, transp, relCF, meshId = info, info, info, info, info, info, info
+        local name, size, color, mat, transp, relCF, meshId = table.unpack(info)
         local p = createScaledMeshPart(meshId, size)
         p.Name = name
         p.Size = size
@@ -73,7 +72,7 @@ return function(variant, Import)
     model.PrimaryPart = parts["RootPart"]
 
     for _, mInfo in ipairs(HonchoData.Motors) do
-        local mName, p0Name, p1Name, c0, c1 = mInfo, mInfo, mInfo, mInfo, mInfo
+        local mName, p0Name, p1Name, c0, c1 = table.unpack(mInfo)
         local p0, p1 = parts[p0Name], parts[p1Name]
         if p0 and p1 then
             local m = Instance.new("Motor6D")
@@ -87,10 +86,11 @@ return function(variant, Import)
     end
 
     for _, wInfo in ipairs(HonchoData.Welds) do
-        local p0, p1 = parts[wInfo], parts[wInfo]
+        local p0Name, p1Name = table.unpack(wInfo)
+        local p0, p1 = parts[p0Name], parts[p1Name]
         if p0 and p1 then
             local w = Instance.new("WeldConstraint")
-            w.Name = wInfo .. "Weld"
+            w.Name = p1Name .. "Weld"
             w.Part0 = p0
             w.Part1 = p1
             w.Parent = p0
@@ -120,5 +120,6 @@ return function(variant, Import)
     addAnim("walk",   "rbxassetid://100466662502744")
     addAnim("sprint", "rbxassetid://100466662502744")
 
+    print("[HonchoBuilder] Модель Honcho успешно собрана! Деталей:", #model:GetChildren())
     return model
 end
