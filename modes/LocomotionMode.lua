@@ -1,10 +1,14 @@
 -- modes/LocomotionMode.lua
--- Прямой бег/ходьба [F] и преследование [N] для одного клона и всей толпы (MultiClone) с поддержкой маршрутов RoomMap
+-- Прямой бег/ходьба [F] и преследование [N] для одного клона и всей толпы (MultiClone)
 
 return function(API)
     local Config = API.Config
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
     local chaseVelocities = {}
     local waypointIndices = {}
+    local crowdAngles = {}
 
     local function getActiveSpeed(isSprintPace)
         if API.IsCrouching() then
@@ -63,12 +67,44 @@ return function(API)
         return {}
     end
 
+    -- Точный расчёт высоты пола без багов кэша и без левитации для любого типа рига
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+
+    local function getExactCloneFloorY(model, pos, fallbackY)
+        local ignore = {}
+        for _, entry in ipairs(API.GetAllClones()) do
+            if entry.model then table.insert(ignore, entry.model) end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then table.insert(ignore, p.Character) end
+        end
+        rayParams.FilterDescendantsInstances = ignore
+
+        local off = model:GetAttribute("RootOffset") or 3.65
+        local hit = workspace:Raycast(Vector3.new(pos.X, fallbackY + 3, pos.Z), Vector3.new(0, -30, 0), rayParams)
+        return hit and (hit.Position.Y + off) or fallbackY
+    end
+
+    -- Плавный разворот только по оси Y (убирает рывки влево-вправо)
+    local function smoothLookCF(currentCF, pos, lookDir, dt)
+        local flatDir = Vector3.new(lookDir.X, 0, lookDir.Z)
+        if flatDir.Magnitude < 0.05 then
+            return CFrame.new(pos) * currentCF.Rotation
+        end
+        local targetRot = CFrame.lookAt(Vector3.zero, flatDir.Unit, Vector3.yAxis)
+        local alpha = math.clamp(dt * 12, 0, 1)
+        return CFrame.new(pos) * currentCF.Rotation:Lerp(targetRot, alpha)
+    end
+
     return {
         Name = "Locomotion",
 
         OnActivate = function(subMode)
             table.clear(chaseVelocities)
             table.clear(waypointIndices)
+            table.clear(crowdAngles)
             API.SetSubMode(subMode)
         end,
 
@@ -85,18 +121,17 @@ return function(API)
             local subMode = API.GetSubMode()
             local speed = getActiveSpeed(isSprintPace)
             local all = API.GetAllClones()
-            local isMulti = API.IsMultiClone and API.IsMultiClone() or (#all > 1)
+            local isMulti = (API.IsMultiClone and API.IsMultiClone()) or (#all > 1)
 
-            -- Надёжный поиск корня игрока (даже если PrimaryPart у персонажа nil)
             local playerRoot = myRoot
             if not playerRoot then
-                local ch = game:GetService("Players").LocalPlayer.Character
+                local ch = LocalPlayer.Character
                 playerRoot = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("CollisionPart") or ch.PrimaryPart)
             end
 
             local waypoints = getRoomWaypoints()
 
-            -- Если активен режим толпы (MultiClone) и клонов > 1 — двигаем КАЖДОГО клона!
+            -- РЕЖИМ ТОЛПЫ (MultiClone)
             if isMulti and #all > 1 then
                 for idx, entry in ipairs(all) do
                     local m = entry.model
@@ -110,7 +145,6 @@ return function(API)
                             targetPos = curPos + curCF.LookVector * speed * dt * 2
                         elseif subMode == "Chase" then
                             if #waypoints >= 2 then
-                                -- Клоны идут цепочкой по точкам маршрута RoomMap друг за другом!
                                 local wpIdx = waypointIndices[entry] or (((idx - 1) % #waypoints) + 1)
                                 waypointIndices[entry] = wpIdx
                                 local wp = waypoints[wpIdx]
@@ -118,41 +152,41 @@ return function(API)
                                 if ((wp - curPos) * Vector3.new(1, 0, 1)).Magnitude < 3.0 then
                                     waypointIndices[entry] = (wpIdx % #waypoints) + 1
                                 end
-                            elseif idx == 1 and playerRoot then
-                                -- Первый клон догоняет игрока
-                                targetPos = playerRoot.Position
-                            elseif all[idx - 1] and all[idx - 1].cframe then
-                                -- Второй и последующие клоны догоняют предыдущего клона!
-                                targetPos = all[idx - 1].cframe.Position
                             elseif playerRoot then
-                                targetPos = playerRoot.Position
+                                -- Все клоны бегут за игроком, но занимают позиции веером вокруг него
+                                if not crowdAngles[entry] then
+                                    crowdAngles[entry] = (idx - 1) * 2.39996 -- золотой угол для равномерного кольца
+                                end
+                                local spreadRadius = math.min(2.2 + (#all * 0.25), 6.0)
+                                local offset = Vector3.new(
+                                    math.cos(crowdAngles[entry]) * spreadRadius,
+                                    0,
+                                    math.sin(crowdAngles[entry]) * spreadRadius
+                                )
+                                targetPos = playerRoot.Position + offset
                             end
                         end
 
                         if targetPos then
-                            local toTarget = (targetPos - curPos) * Vector3.new(1, 0, 1)
+                            local toTarget = Vector3.new(targetPos.X - curPos.X, 0, targetPos.Z - curPos.Z)
                             local dist = toTarget.Magnitude
                             local stopDist = (subMode == "Straight") and 0.1 or (Config.ChaseStopDistance or 3.5)
                             local vel = chaseVelocities[entry] or Vector3.zero
 
                             if dist > stopDist then
-                                local accel = math.clamp(dt * ((Config.ChaseAcceleration or 80) / 10), 0, 1)
+                                local accel = math.clamp(dt * 10, 0, 1)
                                 vel = vel:Lerp(toTarget.Unit * speed, accel)
                             else
-                                vel = vel:Lerp(Vector3.zero, math.clamp(dt * (Config.ChaseFriction or 10), 0, 1))
+                                vel = vel:Lerp(Vector3.zero, math.clamp(dt * 12, 0, 1))
                             end
                             chaseVelocities[entry] = vel
 
                             local spd = vel.Magnitude
-                            if spd > 0.3 then
+                            if spd > 0.35 then
                                 updateEntryTracks(entry, spd, isSprintPace)
                                 local nextPos = curPos + vel * dt
-                                local off = m:GetAttribute("RootOffset") or 3.65
-                                local floorY = API.GetFloorY(nextPos, curPos.Y, false) - (Config.RootOffset or 3.65) + off
-                                local newCF = CFrame.lookAt(
-                                    Vector3.new(nextPos.X, floorY, nextPos.Z),
-                                    Vector3.new(nextPos.X + vel.X, floorY, nextPos.Z + vel.Z)
-                                )
+                                local floorY = getExactCloneFloorY(m, nextPos, curPos.Y)
+                                local newCF = smoothLookCF(curCF, Vector3.new(nextPos.X, floorY, nextPos.Z), vel, dt)
                                 entry.cframe = newCF
                                 r.CFrame = newCF
                                 if m == API.GetClone() then
@@ -160,6 +194,12 @@ return function(API)
                                 end
                             else
                                 updateEntryTracks(entry, 0, false)
+                                if playerRoot then
+                                    local lookToPlayer = Vector3.new(playerRoot.Position.X - curPos.X, 0, playerRoot.Position.Z - curPos.Z)
+                                    local newCF = smoothLookCF(curCF, curPos, lookToPlayer, dt)
+                                    entry.cframe = newCF
+                                    r.CFrame = newCF
+                                end
                             end
                         end
                     end
@@ -167,55 +207,47 @@ return function(API)
                 return
             end
 
-            -- Одиночный клон (стандартный режим)
+            -- ОДИНОЧНЫЙ КЛОН
             if subMode == "Straight" then
                 API.UpdateAnimation(speed, isSprintPace)
                 local nextPos = cloneCFrame.Position + cloneCFrame.LookVector * speed * dt
-                local floorY = API.GetFloorY(nextPos, refY, false)
+                local floorY = getExactCloneFloorY(API.GetClone(), nextPos, refY)
                 API.SetCFrame(CFrame.new(nextPos.X, floorY, nextPos.Z) * cloneCFrame.Rotation)
-                return
-            end
-
-            if subMode == "Chase" then
-                local targetPos = nil
-                if #waypoints >= 2 then
-                    local wpIdx = waypointIndices[1] or 1
-                    local wp = waypoints[wpIdx]
-                    targetPos = wp
-                    if ((wp - cloneCFrame.Position) * Vector3.new(1, 0, 1)).Magnitude < 3.0 then
-                        waypointIndices[1] = (wpIdx % #waypoints) + 1
-                    end
-                elseif playerRoot then
-                    targetPos = playerRoot.Position
-                end
-
-                if not targetPos then return end
-                local toPlayer = (targetPos - cloneCFrame.Position) * Vector3.new(1, 0, 1)
-                local dist = toPlayer.Magnitude
-                local stopDist = Config.ChaseStopDistance or 3.5
-
-                local vel = chaseVelocities[1] or Vector3.zero
-                if dist > stopDist then
-                    local accel = math.clamp(dt * ((Config.ChaseAcceleration or 80) / 10), 0, 1)
-                    vel = vel:Lerp(toPlayer.Unit * speed, accel)
-                else
-                    vel = vel:Lerp(Vector3.zero, math.clamp(dt * (Config.ChaseFriction or 10), 0, 1))
-                end
-                chaseVelocities[1] = vel
-
-                local spd = vel.Magnitude
-                if spd > 0.3 then
-                    API.UpdateAnimation(spd, isSprintPace)
-                    local nextPos = cloneCFrame.Position + vel * dt
-local floorY = API.GetFloorY(nextPos, refY, false)
-API.SetCFrame(CFrame.lookAt(
-Vector3.new(nextPos.X, floorY, nextPos.Z),
-Vector3.new(nextPos.X + vel.X, floorY, nextPos.Z + vel.Z)
-))
+return
+end
+if subMode == "Chase" then
+local targetPos = nil
+if #waypoints >= 2 then
+local wpIdx = waypointIndices[1] or 1
+local wp = waypoints[wpIdx]
+targetPos = wp
+if ((wp - cloneCFrame.Position) * Vector3.new(1, 0, 1)).Magnitude < 3.0 then
+waypointIndices[1] = (wpIdx % #waypoints) + 1
+end
+elseif playerRoot then
+targetPos = playerRoot.Position
+end
+if not targetPos then return end
+local toPlayer = Vector3.new(targetPos.X - cloneCFrame.Position.X, 0, targetPos.Z - cloneCFrame.Position.Z)
+local dist = toPlayer.Magnitude
+local stopDist = Config.ChaseStopDistance or 3.5
+local vel = chaseVelocities[1] or Vector3.zero
+if dist > stopDist then
+local accel = math.clamp(dt * 10, 0, 1)
+vel = vel:Lerp(toPlayer.Unit * speed, accel)
+else
+vel = vel:Lerp(Vector3.zero, math.clamp(dt * 12, 0, 1))
+end
+chaseVelocities[1] = vel
+local spd = vel.Magnitude
+if spd > 0.35 then
+API.UpdateAnimation(spd, isSprintPace)
+local nextPos = cloneCFrame.Position + vel * dt
+local floorY = getExactCloneFloorY(API.GetClone(), nextPos, refY)
+API.SetCFrame(smoothLookCF(cloneCFrame, Vector3.new(nextPos.X, floorY, nextPos.Z), vel, dt))
 else
 API.UpdateAnimation(0, false)
-local lookTarget = Vector3.new(targetPos.X, cloneCFrame.Position.Y, targetPos.Z)
-API.SetCFrame(cloneCFrame:Lerp(CFrame.lookAt(cloneCFrame.Position, lookTarget), math.clamp(dt * 8, 0, 1)))
+API.SetCFrame(smoothLookCF(cloneCFrame, cloneCFrame.Position, toPlayer, dt))
 end
 end
 end
