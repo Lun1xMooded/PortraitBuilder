@@ -19,7 +19,7 @@ Registry.ActorList = {
     { Id = "PortraitLight", Label = "Portrait Белый (Сток)", Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitLight", IsPortrait = true, RootOffset = 3.65 },
     { Id = "PortraitDark",  Label = "Portrait Чёрный",       Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitDark",  IsPortrait = true, RootOffset = 3.65 },
     { Id = "LocalAvatar",   Label = "Мой аватар (Билдер)",   Type = "CustomBuilder", Path = "builders/LocalAvatarBuilder.lua", Variant = nil,             RootOffset = 3.55 },
-    { Id = "Honcho",        Label = "Honcho (Кастом Риг)",   Type = "CustomBuilder", Path = "builders/HonchoBuilder.lua",      Variant = nil,             RootOffset = 5.01 },
+    { Id = "Honcho", Label = "Honcho (Процедурный)", Type = "CustomBuilder", Path = "builders/HonchoBuilder.lua", Variant = nil, RootOffset = 6.35 },
 }
 
 
