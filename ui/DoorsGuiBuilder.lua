@@ -182,13 +182,17 @@ function DoorsGuiBuilder.Create(Import, rawTheme, titleText, subText)
         return slot
     end
 
-    local function updateBindSlot(slot, newBind)
+        local function updateBindSlot(slot, newBind)
         if not slot then return end
         slot.bind = newBind
         for _, fn in ipairs(slot.updaters) do
             fn(newBind)
         end
+        if Window.OnBindUpdated then
+            Window.OnBindUpdated(slot, newBind)
+        end
     end
+
 
     local globalBindConn = UserInputService.InputBegan:Connect(function(inp)
         if UserInputService:GetFocusedTextBox() then return end

@@ -5,6 +5,30 @@ return function(Import, Config)
     local UserInputService = game:GetService("UserInputService")
     local LocalPlayer = Players.LocalPlayer
     local ENV = getgenv()
+	local HttpService = game:GetService("HttpService")
+   local KB_FOLDER, KB_FILE = "PortraitBuilder", "PortraitBuilder/keybinds.json"
+   local function loadSavedKeys()
+       if type(isfile) == "function" and type(readfile) == "function" and isfile(KB_FILE) then
+           local ok, dec = pcall(function() return HttpService:JSONDecode(readfile(KB_FILE)) end)
+           if ok and type(dec) == "table" and Config.Keys then
+               for k, v in pairs(dec) do
+                   if Enum.KeyCode[v] then Config.Keys[k] = v end
+               end
+           end
+       end
+   end
+   local function saveCustomKeys()
+       if type(writefile) == "function" and Config.Keys then
+           pcall(function()
+               if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(KB_FOLDER) then
+                   makefolder(KB_FOLDER)
+               end
+               writefile(KB_FILE, HttpService:JSONEncode(Config.Keys))
+           end)
+       end
+   end
+   loadSavedKeys()
+   ENV.SaveMemeActorKeybinds = saveCustomKeys
 
     if ENV.StopMemeActor then
         pcall(ENV.StopMemeActor)
@@ -419,10 +443,14 @@ end,
 SetSubMode = function(s)
 activeSub = s
 end,
-IsCrouching = function()
-return isCrouching
-end,
-SetCrouch = setCrouch,
+        IsCrouching = function()
+            return isCrouching
+        end,
+        IsMultiClone = function()
+            return multiCloneMode
+        end,
+        SetCrouch = setCrouch,
+
 IsHeadLookEnabled = function()
 return headLookOn
 end,
@@ -630,13 +658,15 @@ EffectsLib.UpdateJitter(e.jitter, Config.JitterIntensity or 4.0)
 end
 end
 end
-if activeClone and cloneCF and activeMode and activeMode.OnStep then
-local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
-local myR = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
-if r then
-activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
-end
-end
+        if activeClone and cloneCF and activeMode and activeMode.OnStep then
+            local r = activeClone.PrimaryPart or activeClone:FindFirstChild("HumanoidRootPart")
+            local myChar = LocalPlayer.Character
+            local myR = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("CollisionPart") or myChar.PrimaryPart)
+            if r then
+                activeMode.OnStep(dt, cloneCF, r, myR, myR and myR.Position.Y or cloneCF.Position.Y, isSprint)
+            end
+        end
+
 updateToolDrivers()
 end)
 local steppedConn = RunService.Stepped:Connect(function(_, dt)
