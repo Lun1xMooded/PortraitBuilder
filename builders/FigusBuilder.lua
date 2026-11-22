@@ -117,7 +117,6 @@ local p = createMeshPart(key, data)
 p.Parent = model
 parts[key] = p
 end
-local torsoMotor = nil
 for _, j in ipairs(FIGUS_JOINTS) do
 local p0 = parts[j.Part0]
 local p1 = parts[j.Part1]
@@ -129,9 +128,6 @@ motor.Part1 = p1
 motor.C0 = j.C0
 motor.C1 = j.C1
 motor.Parent = p0
-if j.Name == "Torso" then
-torsoMotor = motor
-end
 end
 end
 for _, w in ipairs(FIGUS_WELDS) do
@@ -184,56 +180,41 @@ end
 addAnim("idle",   "rbxassetid://18539828651")
 addAnim("walk",   "rbxassetid://18539834115")
 addAnim("sprint", "rbxassetid://8465893113")
--- Встроенный стабилизатор позы и эксклюзивного проигрывания анимаций (без конфликтов блендинга!)
+-- Разводим приоритеты треков (Idle < Movement < Action), чтобы оригинальные анимации не перебивали друг друга
+animator.AnimationPlayed:Connect(function(tr)
+if not tr.Animation then return end
+local id = tr.Animation.AnimationId
+if id:find("18539828651") then
+tr.Priority = Enum.AnimationPriority.Idle
+elseif id:find("18539834115") then
+tr.Priority = Enum.AnimationPriority.Movement
+elseif id:find("8465893113") then
+tr.Priority = Enum.AnimationPriority.Action
+end
+end)
+-- Только звуки шагов без вмешательства в позу и кости
 local stepSound = Instance.new("Sound")
 stepSound.Name = "FigusFootstep"
 stepSound.SoundId = "rbxassetid://8465836233"
 stepSound.Volume = 0.45
 stepSound.Parent = hrp
-local baseTorsoC0 = torsoMotor and torsoMotor.C0 or CFrame.new()
 local lastPos = hrp.Position
 local stepDist = 0
-local curPitch = math.rad(-14) -- компенсация завала назад в Idle
-local stabConn
-stabConn = RunService.Heartbeat:Connect(function(dt)
+local stepConn
+stepConn = RunService.Heartbeat:Connect(function()
 if not model.Parent or not hrp.Parent then
-if stabConn then stabConn:Disconnect() end
+if stepConn then stepConn:Disconnect() end
 return
 end
 local curPos = hrp.Position
-local flatMove = (curPos - lastPos) * Vector3.new(1, 0, 1)
-local moved = flatMove.Magnitude
-local speed = moved / math.max(dt, 0.001)
+local moved = ((curPos - lastPos) * Vector3.new(1, 0, 1)).Magnitude
 lastPos = curPos
--- Звуки шагов
 if moved > 0.005 and moved < 5.0 then
 stepDist = stepDist + moved
 if stepDist >= 5.2 then
 stepDist = 0
 stepSound.PlaybackSpeed = 0.95 + math.random() * 0.15
 stepSound:Play()
-end
-end
--- Выравниваем наклон корпуса (-14° в покое, -20° при беге вперёд, чтобы не заваливался на спину)
-if torsoMotor and torsoMotor.Parent then
-local targetPitch = (speed > 1.0) and math.rad(-20) or math.rad(-14)
-curPitch = curPitch + (targetPitch - curPitch) * math.clamp(dt * 10, 0, 1)
-torsoMotor.C0 = baseTorsoC0 * CFrame.Angles(curPitch, 0, 0)
-end
--- Защита от одновременного наложения idle + walk + sprint:
--- оставляем вес 1 только у самой приоритетной активной анимации, остальные глушим в 0!
-local playing = animator:GetPlayingAnimationTracks()
-local bestTrack = nil
-local bestWeight = -1
-for _, tr in ipairs(playing) do
-if tr.WeightCurrent > bestWeight then
-bestWeight = tr.WeightCurrent
-bestTrack = tr
-end
-end
-for _, tr in ipairs(playing) do
-if tr ~= bestTrack and tr.WeightTarget > 0.01 then
-tr:AdjustWeight(0, 0.05)
 end
 end
 end)
