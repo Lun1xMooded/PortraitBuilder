@@ -167,45 +167,131 @@ return part
 end
 -- Точные 5 эмиттеров чёрных пикселей на голове из дампа!
 local function buildHeadParticles(headPart)
-if not headPart then return end
-local att = Instance.new("Attachment")
-att.Name = "Attachment"
-att.Parent = headPart
-local blackCol = ColorSequence.new(Color3.fromRGB(0, 0, 0))
-local solidTransp = NumberSequence.new(0)
-local delayedTransp = NumberSequence.new({
-NumberSequenceKeypoint.new(0.000, 1.000),
-NumberSequenceKeypoint.new(0.578, 1.000),
-NumberSequenceKeypoint.new(0.584, 0.000),
-NumberSequenceKeypoint.new(1.000, 0.000),
-})
-local emitters = {
-{ Name = "ParticleEmitter", Tex = "rbxassetid://135838365761108", Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.297, 0.472), NumberSequenceKeypoint.new(1, 1.297, 0.472) }), Life = NumberRange.new(1, 3), Speed = NumberRange.new(0, 0), Rate = 3.0, Drag = 1, Transp = solidTransp },
-{ Name = "Sketches2",       Tex = "rbxassetid://107697998415989", Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.943, 0.825), NumberSequenceKeypoint.new(1, 0.943, 0.825) }), Life = NumberRange.new(0.1, 0.1), Speed = NumberRange.new(0, 0), Rate = 1.0, Drag = 1, Transp = solidTransp },
-{ Name = "Sketches",        Tex = "rbxassetid://107697998415989", Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.943, 0.825), NumberSequenceKeypoint.new(1, 0.943, 0.825) }), Life = NumberRange.new(0.25, 0.25), Speed = NumberRange.new(0, 0), Rate = 3.0, Drag = 1, Transp = solidTransp },
-{ Name = "Smaller2",        Tex = "rbxassetid://1195495135",      Size = NumberSequence.new(0.059), Life = NumberRange.new(2, 2), Speed = NumberRange.new(41.26, 41.26), Rate = 3.8, Drag = 40, Transp = delayedTransp },
-{ Name = "Smaller",         Tex = "rbxassetid://1195495135",      Size = NumberSequence.new(0.236), Life = NumberRange.new(2, 2), Speed = NumberRange.new(41.26, 41.26), Rate = 3.0, Drag = 40, Transp = delayedTransp },
-}
-for _, cfg in ipairs(emitters) do
-local pe = Instance.new("ParticleEmitter")
-pe.Name = cfg.Name
-pe.Texture = cfg.Tex
-pe.Color = blackCol
-pe.Size = cfg.Size
-pe.Transparency = cfg.Transp
-pe.Lifetime = cfg.Life
-pe.Speed = cfg.Speed
-pe.Rate = cfg.Rate
-pe.Drag = cfg.Drag
-pe.SpreadAngle = Vector2.new(360, 360)
-pe.LockedToPart = true
-pe.EmissionDirection = Enum.NormalId.Top
-pe.Orientation = Enum.ParticleOrientation.FacingCamera
-pe.LightInfluence = 0
-pe.LightEmission = 0
-pe.Parent = att
+    if not headPart then return end
+    local att = Instance.new("Attachment")
+    att.Name = "Attachment"
+    att.Parent = headPart
+
+    local blackCol = ColorSequence.new(Color3.fromRGB(0, 0, 0))
+    local squashSeq = NumberSequence.new({
+        NumberSequenceKeypoint.new(0.000, 0.000, 0.100),
+        NumberSequenceKeypoint.new(0.502, 0.000, 0.100),
+        NumberSequenceKeypoint.new(1.000, 0.000, 0.100),
+    })
+
+    local solidTransp = NumberSequence.new(0)
+    local negTransp = NumberSequence.new(-999)
+    local delayedTransp = NumberSequence.new({
+        NumberSequenceKeypoint.new(0.000, 1.000, 0.000),
+        NumberSequenceKeypoint.new(0.578, 1.000, 0.000),
+        NumberSequenceKeypoint.new(0.584, 0.000, 0.000),
+        NumberSequenceKeypoint.new(1.000, 0.000, 0.000),
+    })
+
+    local emitters = {
+        {
+            Name = "ParticleEmitter",
+            Tex = "rbxassetid://135838365761108",
+            Transp = solidTransp,
+            Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.297, 0.472), NumberSequenceKeypoint.new(1, 1.297, 0.472) }),
+            Life = NumberRange.new(1.00, 3.00),
+            Speed = NumberRange.new(0.00, 0.00),
+            Rate = 3.00,
+            Drag = 1.00,
+            FlipLayout = Enum.ParticleFlipbookLayout.Grid4x4,
+            FlipFPS = NumberRange.new(6.0, 6.0),
+            FlipRandom = true,
+        },
+        {
+            Name = "Sketches2",
+            Tex = "rbxassetid://107697998415989",
+            Transp = negTransp,
+            Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.943, 0.825), NumberSequenceKeypoint.new(1, 0.943, 0.825) }),
+            Life = NumberRange.new(0.10, 0.10),
+            Speed = NumberRange.new(0.00, 0.00),
+            Rate = 1.00,
+            Drag = 1.00,
+            FlipLayout = Enum.ParticleFlipbookLayout.Grid4x4,
+            FlipFPS = NumberRange.new(0.0, 0.0),
+            FlipRandom = true,
+        },
+        {
+            Name = "Smaller2",
+            Tex = "rbxassetid://1195495135",
+            Transp = delayedTransp,
+            Size = NumberSequence.new(0.059),
+            Life = NumberRange.new(2.00, 2.00),
+            Speed = NumberRange.new(41.26, 41.26),
+            Rate = 3.77,
+            Drag = 40.00,
+            FlipLayout = Enum.ParticleFlipbookLayout.None,
+            FlipFPS = NumberRange.new(1.0, 1.0),
+            FlipRandom = false,
+        },
+        {
+            Name = "Sketches",
+            Tex = "rbxassetid://107697998415989",
+            Transp = negTransp,
+            Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.943, 0.825), NumberSequenceKeypoint.new(1, 0.943, 0.825) }),
+            Life = NumberRange.new(0.25, 0.25),
+            Speed = NumberRange.new(0.00, 0.00),
+            Rate = 3.00,
+            Drag = 1.00,
+            FlipLayout = Enum.ParticleFlipbookLayout.Grid4x4,
+            FlipFPS = NumberRange.new(0.0, 0.0),
+            FlipRandom = true,
+        },
+        {
+            Name = "Smaller",
+            Tex = "rbxassetid://1195495135",
+            Transp = delayedTransp,
+            Size = NumberSequence.new(0.236),
+            Life = NumberRange.new(2.00, 2.00),
+            Speed = NumberRange.new(41.26, 41.26),
+            Rate = 3.00,
+            Drag = 40.00,
+            FlipLayout = Enum.ParticleFlipbookLayout.None,
+            FlipFPS = NumberRange.new(1.0, 1.0),
+            FlipRandom = false,
+        },
+    }
+
+    for _, cfg in ipairs(emitters) do
+        local pe = Instance.new("ParticleEmitter")
+        pe.Name = cfg.Name
+        pe.Texture = cfg.Tex
+        pe.Color = blackCol
+        pe.Transparency = cfg.Transp
+        pe.Size = cfg.Size
+        pe.Squash = squashSeq
+        pe.Lifetime = cfg.Life
+        pe.Speed = cfg.Speed
+        pe.Rate = cfg.Rate
+        pe.TimeScale = 1.00
+        pe.Rotation = NumberRange.new(0.0, 0.0)
+        pe.RotSpeed = NumberRange.new(0.0, 0.0)
+        pe.SpreadAngle = Vector2.new(360.0, 360.0)
+        pe.ZOffset = 0.000
+        pe.LightEmission = 0.00
+        pe.LightInfluence = 0.00
+        pe.Brightness = 0.00
+        pe.Orientation = Enum.ParticleOrientation.FacingCamera
+        pe.EmissionDirection = Enum.NormalId.Top
+        pe.LockedToPart = true
+        pe.Drag = cfg.Drag
+        pe.Acceleration = Vector3.new(0, 0, 0)
+        pe.Shape = Enum.ParticleEmitterShape.Box
+        pe.ShapeInOut = Enum.ParticleEmitterShapeInOut.Inward
+        pe.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        pe.ShapePartial = 1.00
+        pe.FlipbookLayout = cfg.FlipLayout
+        pe.FlipbookMode = Enum.ParticleFlipbookMode.Loop
+        pe.FlipbookFramerate = cfg.FlipFPS
+        pe.FlipbookStartRandom = cfg.FlipRandom
+        pe.Parent = att
+    end
 end
-end
+
 local function buildHonchoModel(variantName)
 local model = Instance.new("Model")
 model.Name = "Honcho_MemeClone"

@@ -245,29 +245,43 @@ return function(Import, Config)
         ENV.ActiveActorClone = nil
     end
 
-    local function setupRigTracks(clone)
+        local function setupRigTracks(clone)
         local customFolder = clone:FindFirstChild("CustomAnimations")
         if customFolder then
             local hum = clone:FindFirstChildOfClass("Humanoid")
             local anim = hum and (hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum))
             local res = {}
             if anim then
+                local prios = {
+                    idle   = Enum.AnimationPriority.Idle,
+                    walk   = Enum.AnimationPriority.Movement,
+                    sprint = Enum.AnimationPriority.Movement,
+                    crouch = Enum.AnimationPriority.Action,
+                }
                 for _, name in ipairs({ "idle", "walk", "sprint", "crouch" }) do
                     local a = customFolder:FindFirstChild(name, true)
                     if a and a:IsA("Animation") then
                         local tr = anim:LoadAnimation(a)
                         tr.Looped = true
+                        tr.Priority = prios[name] or Enum.AnimationPriority.Movement
                         res[name] = tr
                     end
                 end
                 if res.idle then
-                    res.idle:Play(0.1)
+                    res.idle:Play(0.1, 1, 1)
+                end
+                if res.walk then
+                    res.walk:Play(0.1, 0.001, 0.01)
+                end
+                if res.sprint then
+                    res.sprint:Play(0.1, 0.001, 0.01)
                 end
             end
             return res
         end
         return RigLib.SetupAnimations(clone, LocalPlayer.Character)
     end
+
 
     local function spawnClone(dist, preserve, customCF)
         local sCF = customCF or (preserve and cloneCF or nil)
