@@ -186,24 +186,47 @@ return function(Import, Config)
         end
     end
 
-    local function updateAnim(speed, sprint)
+        local function updateAnim(speed, sprint)
+        local isCustom = activeClone and activeClone:FindFirstChild("CustomAnimations") ~= nil
+
         if isCrouching and tracks.crouch then
-            if tracks.idle then tracks.idle:AdjustWeight(0.001) end
-            if tracks.walk then tracks.walk:AdjustWeight(0.001) end
-            if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
+            if tracks.idle and tracks.idle.IsPlaying then tracks.idle:Stop(0.15) end
+            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
+            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
             if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
             tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 15, 0.35, 1.3) or 0)
             return
         end
+
+        -- Для кастомных ригов (Honcho, Figus) запускаем строго ОДНУ анимацию без фонового смешивания!
+        if isCustom then
+            if speed > 0.5 then
+                if tracks.idle and tracks.idle.IsPlaying then tracks.idle:Stop(0.15) end
+                if sprint and tracks.sprint then
+                    if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
+                    if not tracks.sprint.IsPlaying then tracks.sprint:Play(0.15, 1, 1) end
+                    tracks.sprint:AdjustSpeed(math.clamp(speed / (Config.SprintSpeed or 22), 0.7, 1.35))
+                elseif tracks.walk then
+                    if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
+                    if not tracks.walk.IsPlaying then tracks.walk:Play(0.15, 1, 1) end
+                    tracks.walk:AdjustSpeed(math.clamp(speed / (Config.WalkSpeed or 14), 0.65, 1.35))
+                end
+            else
+                if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.2) end
+                if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.2) end
+                if tracks.idle and not tracks.idle.IsPlaying then tracks.idle:Play(0.2, 1, 1) end
+            end
+            return
+        end
+
+        -- Стандартный блендинг для Portrait и R15 аватара
         if not tracks.walk then return end
         if not tracks.walk.IsPlaying then tracks.walk:Play(0.1, 0.001, 0.01) end
         if tracks.sprint and not tracks.sprint.IsPlaying then tracks.sprint:Play(0.1, 0.001, 0.01) end
 
         if speed > 0.5 then
             if tracks.idle then tracks.idle:AdjustWeight(0.001) end
-            local isCustom = activeClone and activeClone:FindFirstChild("CustomAnimations") ~= nil
-            local moveWeight = isCustom and 1 or math.clamp(speed / Config.WalkSpeed, 0.05, 1)
-
+            local moveWeight = math.clamp(speed / Config.WalkSpeed, 0.05, 1)
             if sprint and tracks.sprint then
                 tracks.walk:AdjustWeight(0.001)
                 tracks.sprint:AdjustWeight(moveWeight)
@@ -223,6 +246,7 @@ return function(Import, Config)
             end
         end
     end
+
 
     local function setMode(modeObj, sub)
         if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then

@@ -103,7 +103,7 @@ end
 local function buildFigusModel()
 local model = Instance.new("Model")
 model.Name = "Figus_MemeClone"
-model:SetAttribute("RootOffset", 7.35)
+model:SetAttribute("RootOffset", 6.35)
 model:SetAttribute("NoTools", true)
 local hrp = Instance.new("Part")
 hrp.Name = "HumanoidRootPart"
@@ -197,7 +197,7 @@ end
 end)
 local hum = Instance.new("Humanoid")
 hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-hum.HipHeight = 5.0
+hum.HipHeight = 4.35
 hum.EvaluateStateMachine = false
 hum.Parent = model
 local animator = Instance.new("Animator")
