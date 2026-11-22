@@ -151,44 +151,35 @@ return function(Import, Config)
         end
     end
 
-    local function updateAnim(speed, sprint)
+        local function updateAnim(speed, sprint)
         if isCrouching and tracks.crouch then
-            if tracks.walk then
-                tracks.walk:AdjustWeight(0.001)
-            end
-            if tracks.sprint then
-                tracks.sprint:AdjustWeight(0.001)
-            end
-            if not tracks.crouch.IsPlaying then
-                tracks.crouch:Play(0.2, 1, 0)
-            end
+            if tracks.idle then tracks.idle:AdjustWeight(0.001) end
+            if tracks.walk then tracks.walk:AdjustWeight(0.001) end
+            if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
+            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
             tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 15, 0.35, 1.3) or 0)
             return
         end
-        if not tracks.walk then
-            return
-        end
-        if not tracks.walk.IsPlaying then
-            tracks.walk:Play(0.1, 0.001, 0.01)
-        end
-        if tracks.sprint and not tracks.sprint.IsPlaying then
-            tracks.sprint:Play(0.1, 0.001, 0.01)
-        end
+        if not tracks.walk then return end
+        if not tracks.walk.IsPlaying then tracks.walk:Play(0.1, 0.001, 0.01) end
+        if tracks.sprint and not tracks.sprint.IsPlaying then tracks.sprint:Play(0.1, 0.001, 0.01) end
 
         if speed > 0.5 then
-            local moveWeight = math.clamp(speed / Config.WalkSpeed, 0.05, 1)
+            if tracks.idle then tracks.idle:AdjustWeight(0.001) end
+            local isCustom = activeClone and activeClone:FindFirstChild("CustomAnimations") ~= nil
+            local moveWeight = isCustom and 1 or math.clamp(speed / Config.WalkSpeed, 0.05, 1)
+
             if sprint and tracks.sprint then
                 tracks.walk:AdjustWeight(0.001)
                 tracks.sprint:AdjustWeight(moveWeight)
                 tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.65, 1.4))
             else
-                if tracks.sprint then
-                    tracks.sprint:AdjustWeight(0.001)
-                end
+                if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
                 tracks.walk:AdjustWeight(moveWeight)
                 tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.55, 1.35))
             end
         else
+            if tracks.idle then tracks.idle:AdjustWeight(1) end
             tracks.walk:AdjustWeight(0.001)
             tracks.walk:AdjustSpeed(0.01)
             if tracks.sprint then
@@ -197,6 +188,7 @@ return function(Import, Config)
             end
         end
     end
+
 
     local function setMode(modeObj, sub)
         if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
