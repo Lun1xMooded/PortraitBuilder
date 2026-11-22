@@ -11,13 +11,14 @@ return function(API)
         return
     end
 
-    local cursorMode = true -- true = по курсору (+), false = в позиции игрока
+    local cursorMode = true         -- true = ставить точку по курсору, false = под игроком
+    local crosshairEnabled = false  -- по умолчанию прицел (+) ВЫКЛЮЧЕН!
     local crosshairGui = nil
     local crosshairConn = nil
 
-    -- Создание и управление ровным прицелом-плюсиком (+) по центру курсора
-    local function updateCrosshairVisibility()
-        if cursorMode then
+    local function setCrosshairActive(state)
+        crosshairEnabled = state == true
+        if crosshairEnabled then
             if not crosshairGui then
                 local pgui = LocalPlayer:WaitForChild("PlayerGui")
                 local old = pgui:FindFirstChild("MemeActorCrosshair")
@@ -37,7 +38,6 @@ return function(API)
                 holder.BackgroundTransparency = 1
                 holder.Parent = crosshairGui
 
-                -- Горизонтальная линия плюса
                 local hLine = Instance.new("Frame")
                 hLine.AnchorPoint = Vector2.new(0.5, 0.5)
                 hLine.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -49,7 +49,6 @@ return function(API)
                 hStroke.Color = Color3.new(0, 0, 0)
                 hStroke.Thickness = 1
 
-                -- Вертикальная линия плюса
                 local vLine = Instance.new("Frame")
                 vLine.AnchorPoint = Vector2.new(0.5, 0.5)
                 vLine.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -63,9 +62,20 @@ return function(API)
 
                 crosshairConn = RunService.RenderStepped:Connect(function()
                     if not crosshairGui or not crosshairGui.Parent then return end
-                    local mPos = UserInputService:GetMouseLocation()
-                    holder.Position = UDim2.new(0, mPos.X, 0, mPos.Y)
-                    UserInputService.MouseIconEnabled = false
+                    local pguiNow = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                    local mainMenu = pguiNow and pguiNow:FindFirstChild("MemeActorDoorsAdmin")
+                    local menuOpen = mainMenu and mainMenu:FindFirstChild("Container") and mainMenu.Container.Visible
+
+                    -- Если открыто главное меню — временно показываем обычный курсор для удобства
+                    if menuOpen then
+                        holder.Visible = false
+                        UserInputService.MouseIconEnabled = true
+                    else
+                        holder.Visible = true
+                        local mPos = UserInputService:GetMouseLocation()
+                        holder.Position = UDim2.new(0, mPos.X, 0, mPos.Y)
+                        UserInputService.MouseIconEnabled = false
+                    end
                 end)
             end
         else
@@ -75,13 +85,11 @@ return function(API)
         end
     end
 
-    -- Постановка точки строго по центру прицела-плюсика
     local function addNodeAtCursor()
         local cam = workspace.CurrentCamera
         if not cam then return false end
 
         local mPos = UserInputService:GetMouseLocation()
-        -- ViewportPointToRay учитывает GuiInset (36px) автоматически для GetMouseLocation, если использовать ScreenPointToRay с вычетом inset, но точнее всего ViewportPointToRay с mPos.X, mPos.Y - 36
         local ray = cam:ScreenPointToRay(mPos.X, mPos.Y - 36)
 
         local rp = RaycastParams.new()
@@ -113,7 +121,6 @@ return function(API)
         if not ok then warn("[RoomMap Error]:", err) end
     end)
 
-    -- Основное действие постановки точки (работает и по кнопке, и по бинду)
     API.RegisterAction("AddNodeHere", function()
         if cursorMode then
             addNodeAtCursor()
@@ -122,14 +129,12 @@ return function(API)
         end
     end)
 
-    -- Переключение режима (Курсор + / В игроке)
     API.RegisterAction("ToggleNodePlaceMode", function()
         cursorMode = not cursorMode
-        updateCrosshairVisibility()
         if getgenv().MemeUpdateAddNodeLabel then
             getgenv().MemeUpdateAddNodeLabel(cursorMode)
         end
-        print("[Pathfind] Режим точек:", cursorMode and "ПО КУРСОРУ (+)" or "В ПОЗИЦИИ ИГРОКА")
+        print("[Pathfind] Режим точек:", cursorMode and "ПО КУРСОРУ" or "В ПОЗИЦИИ ИГРОКА")
     end)
 
     API.RegisterAction("AutoCarpet", function()
@@ -143,12 +148,8 @@ return function(API)
     API.RegisterState("PathMarkers", function() return PathfindLib.ShowMarkers end, function(v) PathfindLib.SetMarkersVisible(v) end)
     API.RegisterState("PathLoop",    function() return PathfindLib.LoopPath end,    function(v) PathfindLib.LoopPath = v end)
     API.RegisterState("PathSprint",  function() return PathfindLib.SprintPath end,  function(v) PathfindLib.SprintPath = v end)
-    API.RegisterState("CursorCrosshair", function() return cursorMode end, function(v)
-        cursorMode = v
-        updateCrosshairVisibility()
-        if getgenv().MemeUpdateAddNodeLabel then
-            getgenv().MemeUpdateAddNodeLabel(cursorMode)
-        end
+    API.RegisterState("CursorCrosshair", function() return crosshairEnabled end, function(v)
+        setCrosshairActive(v)
     end)
 
     API.RegisterSpawnOverride("Pathfind", function()
@@ -160,11 +161,7 @@ return function(API)
         return nil
     end)
 
-    updateCrosshairVisibility()
-
     API.OnCleanup(function()
-        if crosshairConn then crosshairConn:Disconnect() end
-        if crosshairGui then crosshairGui:Destroy() end
-        UserInputService.MouseIconEnabled = true
+        setCrosshairActive(false)
     end)
 end

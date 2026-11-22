@@ -69,15 +69,12 @@ function MenuController.Build(Import, Registry, Context)
                     saveAllBinds(uiWindow)
                 end, syncId)
 
-                -- Поддержка ПКМ по кнопке (например, переключение Курсор / В игроке для ADD NODE)
+                -- Поддержка ПКМ по кнопке (переключение Курсор / В игроке без авто-включения прицела)
                 if item.RightClickAction and btnObj then
                     local rowLbl = btnObj.Parent and btnObj.Parent:FindFirstChildOfClass("TextLabel")
                     if item.SyncId == "AddNodeHere" and rowLbl then
                         getgenv().MemeUpdateAddNodeLabel = function(isCursor)
                             rowLbl.Text = isCursor and "Поставить точку: КУРСОР (+) [ПКМ]" or "Поставить точку: В ИГРОКЕ [ПКМ]"
-                            if toggles.CursorCrosshair then
-                                toggles.CursorCrosshair.Set(isCursor, true)
-                            end
                         end
                         getgenv().MemeUpdateAddNodeLabel(true)
                     end
