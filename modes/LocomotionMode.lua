@@ -11,12 +11,10 @@ return function(API)
     local crowdAngles = {}
 
     local function getActiveSpeed(isSprintPace, isChase)
-        -- Если включена «Своя скорость» в кастом-модах — используем её
         if API.GetState and API.GetState("UseCustomSpeed") then
             return Config.WalkSpeed
         end
 
-        -- В догонялках (Chase) клон подстраивается под скорость игрока (WalkSpeed - 3, т.е. 12 при 15), чтобы не догонял
         if isChase then
             local char = LocalPlayer.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -60,9 +58,8 @@ return function(API)
             end
         else
             if tr.idle then tr.idle:AdjustWeight(1) end
-            tracks_walk = tr.walk
-            tracks_walk:AdjustWeight(0.001)
-            tracks_walk:AdjustSpeed(0.01)
+            tr.walk:AdjustWeight(0.001)
+            tr.walk:AdjustSpeed(0.01)
             if tr.sprint then
                 tr.sprint:AdjustWeight(0.001)
                 tr.sprint:AdjustSpeed(0.01)
@@ -191,13 +188,13 @@ return function(API)
                 local dist = toPlayer.Magnitude
                 local stopDist = Config.ChaseStopDistance or 4.0
 
-                local vel = chaseVelocities or Vector3.zero
+                local vel = chaseVelocities[1] or Vector3.zero
                 if dist > stopDist then
                     vel = vel:Lerp(toPlayer.Unit * speed, math.clamp(dt * 10, 0, 1))
                 else
                     vel = vel:Lerp(Vector3.zero, math.clamp(dt * 12, 0, 1))
                 end
-                chaseVelocities = vel
+                chaseVelocities[1] = vel
 
                 local spd = vel.Magnitude
                 if spd > 0.35 then
@@ -210,3 +207,6 @@ return function(API)
                     API.SetCFrame(smoothLookCF(cloneCFrame, cloneCFrame.Position, toPlayer, dt))
                 end
             end
+        end
+    }
+end
