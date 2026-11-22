@@ -1,5 +1,5 @@
 -- libs/PathfindLib.lua
--- 3D-карта комнат с поддержкой персональных маршрутов для разных клонов и режима преследования клона клоном
+-- 3D-карта комнат с поддержкой персональных маршрутов, точкой в позиции игрока и спавном охотника в старте жертвы
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -16,7 +16,7 @@ local CLONE_PALETTE = {
 }
 
 local PathfindLib = {
-    Routes = {},         -- [cloneIdx] = { Nodes = {}, StartNodeIndex = 1, ChaseCloneIdx = nil, StartDelay = 0 }
+    Routes = {},
     SelectedClone = 1,
     ShowMarkers = true,
     LoopPath = true,
@@ -32,14 +32,13 @@ function PathfindLib.GetRoute(idx)
         PathfindLib.Routes[idx] = {
             Nodes = {},
             StartNodeIndex = 1,
-            ChaseCloneIdx = nil, -- nil = бежать по своим точкам, число = догонять клона с этим номером
-            StartDelay = 0,      -- задержка старта в секундах
+            ChaseCloneIdx = nil,
+            StartDelay = 0,
         }
     end
     return PathfindLib.Routes[idx]
 end
 
--- Обратная совместимость со старым кодом
 setmetatable(PathfindLib, {
     __index = function(t, k)
         if k == "Nodes" then return t.GetRoute().Nodes end
@@ -171,12 +170,51 @@ function PathfindLib.ClearNodes(cloneIdx)
     PathfindLib.RefreshMarkers()
 end
 
+-- Исправленный поиск пола: луч идёт с высоты +4.5 от пола (ниже крыши!) и игнорирует потолки
 local function getExactFloorY(roomsList, x, z, fallbackY)
+    local validParts = {}
+    for _, r in ipairs(roomsList) do
+        for _, desc in ipairs(r:GetDescendants()) do
+            if desc:IsA("BasePart") and desc.CanCollide and desc.Transparency < 0.95 then
+                local low = desc.Name:lower()
+                if not (low:find("ceiling") or low:find("roof") or low:find("rafter") or low:find("skybox")) then
+                    if desc.Position.Y <= fallbackY + 4.0 then
+                        table.insert(validParts, desc)
+                    end
+                end
+            end
+        end
+    end
+
+    if #validParts > 0 then
+        local rp = RaycastParams.new()
+        rp.FilterType = Enum.RaycastFilterType.Include
+        rp.FilterDescendantsInstances = validParts
+        local hit = workspace:Raycast(Vector3.new(x, fallbackY + 4.5, z), Vector3.new(0, -15, 0), rp)
+        if hit then
+            return hit.Position.Y
+        end
+    end
+    return fallbackY
+end
+
+function PathfindLib.AddNodeAtPlayer(cloneIdx)
+    local char = LocalPlayer.Character
+    local root = char and (char:FindFirstChild("CollisionPart") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart"))
+    if not root then return false end
+
     local rp = RaycastParams.new()
-    rp.FilterType = Enum.RaycastFilterType.Include
-    rp.FilterDescendantsInstances = roomsList
-    local hit = workspace:Raycast(Vector3.new(x, fallbackY + 14, z), Vector3.new(0, -35, 0), rp)
-    return hit and hit.Position.Y or fallbackY
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    local ignore = { char }
+    for _, entry in ipairs(getgenv().MemeAllClones or {}) do
+        if entry.model then table.insert(ignore, entry.model) end
+    end
+    rp.FilterDescendantsInstances = ignore
+
+    local hit = workspace:Raycast(root.Position, Vector3.new(0, -15, 0), rp)
+    local floorY = hit and hit.Position.Y or (root.Position.Y - 2.5)
+    PathfindLib.AddNode(Vector3.new(root.Position.X, floorY, root.Position.Z), cloneIdx or PathfindLib.SelectedClone)
+    return true
 end
 
 function PathfindLib.AutoGenerateFromCarpet(cloneIdx)
@@ -240,37 +278,33 @@ function PathfindLib.OpenLayoutMap()
     hdr.Text = "КАРТА КОМНАТ"
     hdr.TextColor3 = Color3.fromRGB(255, 222, 189)
     hdr.TextScaled = true
-    hdr.TextXAlignment = Enum.TextXAlignment.Left
-    hdr.Parent = frame
-
-    -- Кнопка выбора активного клона для настройки маршрута
-    local btnCloneSel = Instance.new("TextButton")
-    btnCloneSel.Position = UDim2.new(0.36, 0, 0, 8)
-    btnCloneSel.Size = UDim2.new(0.26, 0, 0, 30)
-    btnCloneSel.BackgroundColor3 = CLONE_PALETTE[1]
-    btnCloneSel.Font = Enum.Font.Oswald
-    btnCloneSel.TextColor3 = Color3.fromRGB(20, 12, 11)
-    btnCloneSel.TextScaled = true
-    btnCloneSel.Parent = frame
-    Instance.new("UICorner", btnCloneSel).CornerRadius = UDim.new(0, 6)
-
-    local btnPrevRoom = Instance.new("TextButton")
-    btnPrevRoom.Position = UDim2.new(0.63, 0, 0, 8)
-    btnPrevRoom.Size = UDim2.new(0.13, 0, 0, 30)
-    btnPrevRoom.BackgroundColor3 = Color3.fromRGB(84, 68, 61)
-    btnPrevRoom.Font = Enum.Font.Oswald
-    btnPrevRoom.Text = "< ПРЕД"
-    btnPrevRoom.TextColor3 = Color3.fromRGB(255, 222, 189)
-    btnPrevRoom.TextScaled = true
-    btnPrevRoom.Parent = frame
-    Instance.new("UICorner", btnPrevRoom).CornerRadius = UDim.new(0, 6)
-
-    local btnNextRoom = Instance.new("TextButton")
-    btnNextRoom.Position = UDim2.new(0.77, 0, 0, 8)
-    btnNextRoom.Size = UDim2.new(0.13, 0, 0, 30)
-    btnNextRoom.BackgroundColor3 = Color3.fromRGB(84, 68, 61)
-    btnNextRoom.Font = Enum.Font.Oswald
-    btnNextRoom.Text = "СЛЕД >"
+hdr.TextXAlignment = Enum.TextXAlignment.Left
+hdr.Parent = frame
+local btnCloneSel = Instance.new("TextButton")
+btnCloneSel.Position = UDim2.new(0.36, 0, 0, 8)
+btnCloneSel.Size = UDim2.new(0.26, 0, 0, 30)
+btnCloneSel.BackgroundColor3 = CLONE_PALETTE
+btnCloneSel.Font = Enum.Font.Oswald
+btnCloneSel.TextColor3 = Color3.fromRGB(20, 12, 11)
+btnCloneSel.TextScaled = true
+btnCloneSel.Parent = frame
+Instance.new("UICorner", btnCloneSel).CornerRadius = UDim.new(0, 6)
+local btnPrevRoom = Instance.new("TextButton")
+btnPrevRoom.Position = UDim2.new(0.63, 0, 0, 8)
+btnPrevRoom.Size = UDim2.new(0.13, 0, 0, 30)
+btnPrevRoom.BackgroundColor3 = Color3.fromRGB(84, 68, 61)
+btnPrevRoom.Font = Enum.Font.Oswald
+btnPrevRoom.Text = "< ПРЕД"
+btnPrevRoom.TextColor3 = Color3.fromRGB(255, 222, 189)
+btnPrevRoom.TextScaled = true
+btnPrevRoom.Parent = frame
+Instance.new("UICorner", btnPrevRoom).CornerRadius = UDim.new(0, 6)
+local btnNextRoom = Instance.new("TextButton")
+btnNextRoom.Position = UDim2.new(0.77, 0, 0, 8)
+btnNextRoom.Size = UDim2.new(0.13, 0, 0, 30)
+btnNextRoom.BackgroundColor3 = Color3.fromRGB(84, 68, 61)
+btnNextRoom.Font = Enum.Font.Oswald
+btnNextRoom.Text = "СЛЕД >"
 btnNextRoom.TextColor3 = Color3.fromRGB(255, 222, 189)
 btnNextRoom.TextScaled = true
 btnNextRoom.Parent = frame
@@ -379,7 +413,7 @@ if r == r1 then baseFloorY = fy end
 for _, desc in ipairs(r:GetDescendants()) do
 if desc:IsA("BasePart") and desc.Transparency < 0.95 then
 local low = desc.Name:lower()
-local skip = low:find("ceiling") or low:find("rafter") or low:find("skybox") or low:find("dust")
+local skip = low:find("ceiling") or low:find("roof") or low:find("rafter") or low:find("skybox") or low:find("dust")
 if not skip and desc.Position.Y <= fy + 9.5 then
 local cp = desc:Clone()
 cp:ClearAllChildren()
@@ -410,7 +444,6 @@ local function redrawOverlays()
 if not overlay or not overlay.Parent then return end
 overlay:ClearAllChildren()
 local absSize = overlay.AbsoluteSize
--- Отрисовываем маршруты всех клонов (выбранный клон яркий, остальные полупрозрачные)
 for cIdx, route in pairs(PathfindLib.Routes) do
 local isSelectedClone = (cIdx == PathfindLib.SelectedClone)
 local col = CLONE_PALETTE[((cIdx - 1) % #CLONE_PALETTE) + 1]
@@ -459,7 +492,6 @@ end)
 end
 end
 end
--- Метка игрока
 local myRoot = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("CollisionPart") or LocalPlayer.Character.PrimaryPart)
 if myRoot then
 local meDot = Instance.new("TextLabel")
@@ -475,7 +507,6 @@ meDot.ZIndex = 7
 meDot.Parent = overlay
 Instance.new("UICorner", meDot).CornerRadius = UDim.new(0, 4)
 end
--- Метки всех заспавненных клонов
 local allClones = getgenv().MemeAllClones or {}
 if #allClones > 0 then
 for i, entry in ipairs(allClones) do
@@ -502,7 +533,7 @@ local cDot = Instance.new("TextLabel")
 cDot.AnchorPoint = Vector2.new(0.5, 0.5)
 cDot.Position = worldToOverlay(clone.PrimaryPart.Position)
 cDot.Size = UDim2.new(0, 46, 0, 18)
-cDot.BackgroundColor3 = CLONE_PALETTE[1]
+cDot.BackgroundColor3 = CLONE_PALETTE
 cDot.Font = Enum.Font.Oswald
 cDot.Text = "КЛОН #1"
 cDot.TextColor3 = Color3.fromRGB(20, 12, 11)
@@ -576,7 +607,6 @@ Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
 b.MouseButton1Click:Connect(onClick)
 return b
 end
--- Ряд 1: Роль выбранного клона (По точкам / Догонять другого клона) + Задержка старта
 btnRole = makeBtn("ЦЕЛЬ: БЕГ ПО ТОЧКАМ", UDim2.new(0, 14, 1, -156), UDim2.new(0.48, -4, 0, 32),
 Color3.fromRGB(255, 222, 189), Color3.fromRGB(39, 20, 17), function()
 local cIdx = PathfindLib.SelectedClone
@@ -602,14 +632,10 @@ end
 route.StartDelay = nextVal
 refreshControlButtons()
 end)
--- Ряд 2: Центр комнаты / Ковёр
-makeBtn("+ СЕРЕДИНА КОМНАТЫ", UDim2.new(0, 14, 1, -118), UDim2.new(0.48, -4, 0, 32),
-Color3.fromRGB(255, 222, 189), Color3.fromRGB(39, 20, 17), function()
-local r = select(1, unpack(activeRooms))
-local fl = r and r:FindFirstChild("Parts") and r.Parts:FindFirstChild("Floor")
-if fl then
-local fy = fl.Position.Y + fl.Size.Y * 0.5
-PathfindLib.AddNode(Vector3.new(fl.Position.X, fy, fl.Position.Z), PathfindLib.SelectedClone)
+-- Кнопка установки точки ровно в позиции игрока!
+makeBtn("+ ТОЧКА В МОЕЙ ПОЗИЦИИ", UDim2.new(0, 14, 1, -118), UDim2.new(0.48, -4, 0, 32),
+Color3.fromRGB(95, 210, 130), Color3.fromRGB(20, 12, 11), function()
+if PathfindLib.AddNodeAtPlayer(PathfindLib.SelectedClone) then
 refreshControlButtons()
 redrawOverlays()
 end
@@ -628,7 +654,6 @@ refreshControlButtons()
 redrawOverlays()
 end
 end)
--- Ряд 3: 3D-шары / Сброс зума
 local hideBtn
 hideBtn = makeBtn(PathfindLib.ShowMarkers and "3D-ШАРЫ В КОМНАТЕ: ВКЛ" or "3D-ШАРЫ В КОМНАТЕ: СКРЫТЫ",
 UDim2.new(0, 14, 1, -80), UDim2.new(0.48, -4, 0, 32),
@@ -641,7 +666,6 @@ Color3.fromRGB(111, 95, 86), Color3.fromRGB(255, 222, 189), function()
 loadRoomsPair(selectedIdx)
 redrawOverlays()
 end)
--- Ряд 4: Удалить последнюю / Очистить маршрут текущего клона
 makeBtn("УДАЛИТЬ ПОСЛЕДНЮЮ ТОЧКУ", UDim2.new(0, 14, 1, -42), UDim2.new(0.48, -4, 0, 32),
 Color3.fromRGB(145, 103, 92), Color3.fromRGB(255, 222, 189), function()
 local route = PathfindLib.GetRoute(PathfindLib.SelectedClone)

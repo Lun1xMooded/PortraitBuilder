@@ -23,15 +23,14 @@ function MenuController.Build(Import, Registry, Context)
         end
     end
 
-    -- 2. Загружаем сохранённые бинды из файла (если есть)
+    -- 2. Загружаем сохранённые бинды из JSON-файла
     local activeBinds = KeybindStorage and KeybindStorage.Load(defaultBinds) or defaultBinds
 
-    -- Функция сохранения текущего состояния всех биндов
+    -- Функция сохранения всех биндов при любом изменении
     local function saveAllBinds(uiWindow)
         if not KeybindStorage or not uiWindow or not uiWindow.SyncGroups then return end
         local currentMap = {}
         for syncId, slot in pairs(uiWindow.SyncGroups) do
-            -- Сохраняем либо EnumItem, либо строку "NONE", чтобы пустой бинд не перезаписывался дефолтным
             currentMap[syncId] = slot.bind or "NONE"
         end
         KeybindStorage.Save(currentMap)
@@ -41,7 +40,7 @@ function MenuController.Build(Import, Registry, Context)
     local sliders = getgenv().MemeCustomSliders or {}
     local uiWindow = Builder.Create(Import, Theme, "MEME ACTOR", "Menu")
 
-    -- Передаём в окно хук на автосохранение при любом изменении бинда (включая СКМ)
+    -- Хук на сохранение биндов при переназначении через СКМ
     uiWindow.OnBindUpdated = function()
         saveAllBinds(uiWindow)
     end
@@ -50,7 +49,6 @@ function MenuController.Build(Import, Registry, Context)
         local catTab = uiWindow:AddCategory(catData.Title, catData.Icon)
         for _, item in ipairs(catData.Items) do
             local syncId = item.SyncId or item.Action or item.StateKey or (item.ModeId and (item.ModeId .. "_" .. tostring(item.SubMode)))
-            -- Берём сохранённый бинд, если он есть (если "NONE" — ставим nil)
             local resolvedBind = item.DefaultBind
             if syncId and activeBinds[syncId] ~= nil then
                 resolvedBind = (activeBinds[syncId] == "NONE") and nil or activeBinds[syncId]
@@ -67,9 +65,28 @@ function MenuController.Build(Import, Registry, Context)
                         Context.RunMode(item.ModeId, item.SubMode, item.AutoSpawn)
                     end
                 end
-                catTab:AddButton(item.Text, item.ButtonText, actFn, item.Color, resolvedBind, function()
+                local btnObj = catTab:AddButton(item.Text, item.ButtonText, actFn, item.Color, resolvedBind, function()
                     saveAllBinds(uiWindow)
                 end, syncId)
+
+                -- Поддержка ПКМ по кнопке (например, переключение Курсор / В игроке для ADD NODE)
+                if item.RightClickAction and btnObj then
+                    local rowLbl = btnObj.Parent and btnObj.Parent:FindFirstChildOfClass("TextLabel")
+                    if item.SyncId == "AddNodeHere" and rowLbl then
+                        getgenv().MemeUpdateAddNodeLabel = function(isCursor)
+                            rowLbl.Text = isCursor and "Поставить точку: КУРСОР (+) [ПКМ]" or "Поставить точку: В ИГРОКЕ [ПКМ]"
+                            if toggles.CursorCrosshair then
+                                toggles.CursorCrosshair.Set(isCursor, true)
+                            end
+                        end
+                        getgenv().MemeUpdateAddNodeLabel(true)
+                    end
+                    btnObj.MouseButton2Click:Connect(function()
+                        if Context.Actions[item.RightClickAction] then
+                            Context.Actions[item.RightClickAction]()
+                        end
+                    end)
+                end
 
             elseif item.Type == "Toggle" and item.StateKey then
                 local st = Context.States[item.StateKey]

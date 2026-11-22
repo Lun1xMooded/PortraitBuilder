@@ -1,5 +1,5 @@
 -- modes/PathfindMode.lua
--- Одновременный запуск сценариев для всех клонов (персональные маршруты + погоня одного клона за другим)
+-- Одновременный запуск сценариев для всех клонов (спавн в одной точке + задержка старта + погоня друг за другом)
 
 return function(API)
     local Players = game:GetService("Players")
@@ -90,11 +90,17 @@ return function(API)
                     delayLeft = route and route.StartDelay or 0,
                 }
 
-                if route and #route.Nodes > 0 then
-                    local startIdx = math.clamp(route.StartNodeIndex or 1, 1, #route.Nodes)
-                    local startPos = route.Nodes[startIdx]
-                    local nextIdx = (startIdx < #route.Nodes) and (startIdx + 1) or (PathfindLib.LoopPath and 1 or startIdx)
-                    local nextPos = route.Nodes[nextIdx] or startPos
+                -- Если клон догоняет другого клона, берём стартовую точку того, кого он догоняет!
+                local spawnRoute = route
+                if route and #route.Nodes == 0 and route.ChaseCloneIdx then
+                    spawnRoute = PathfindLib.GetRoute(route.ChaseCloneIdx)
+                end
+
+                if spawnRoute and #spawnRoute.Nodes > 0 then
+                    local startIdx = math.clamp(spawnRoute.StartNodeIndex or 1, 1, #spawnRoute.Nodes)
+                    local startPos = spawnRoute.Nodes[startIdx]
+                    local nextIdx = (startIdx < #spawnRoute.Nodes) and (startIdx + 1) or (PathfindLib.LoopPath and 1 or startIdx)
+                    local nextPos = spawnRoute.Nodes[nextIdx] or startPos
 
                     local floorY = getExactCloneFloorY(entry.model, startPos, startPos.Y + 3.5)
                     local lookFlat = (nextPos - startPos) * Vector3.new(1, 0, 1)
@@ -141,7 +147,6 @@ return function(API)
                         cloneStates[entry] = st
                     end
 
-                    -- Обработка задержки старта
                     if st.delayLeft > 0 then
                         st.delayLeft = math.max(0, st.delayLeft - dt)
                         updateEntryTracks(entry, 0, false)
@@ -152,14 +157,12 @@ return function(API)
                     local targetPos = nil
                     local stopDist = 1.3
 
-                    -- Вариант А: этот клон догоняет другого клона
                     if route.ChaseCloneIdx then
                         local targetEntry = allClones[route.ChaseCloneIdx]
                         if targetEntry and targetEntry.cframe then
                             targetPos = targetEntry.cframe.Position
                             stopDist = 3.2
                         end
-                    -- Вариант Б: этот клон бежит по своим точкам (или по точкам Клона #1, если своих нет)
                     else
                         local nodes = (#route.Nodes > 0) and route.Nodes or PathfindLib.GetRoute(1).Nodes
                         if nodes and #nodes > 0 and st.currentIdx <= #nodes then

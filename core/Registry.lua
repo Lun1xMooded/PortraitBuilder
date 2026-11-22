@@ -19,9 +19,8 @@ Registry.ActorList = {
     { Id = "PortraitLight", Label = "Portrait Белый (Сток)", Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitLight", IsPortrait = true, RootOffset = 3.65 },
     { Id = "PortraitDark",  Label = "Portrait Чёрный",       Type = "Portrait",      Path = "builders/PortraitBuilder.lua",    Variant = "PortraitDark",  IsPortrait = true, RootOffset = 3.65 },
     { Id = "LocalAvatar",   Label = "Мой аватар (Билдер)",   Type = "CustomBuilder", Path = "builders/LocalAvatarBuilder.lua", Variant = nil,             RootOffset = 3.55 },
-    { Id = "Honcho", Label = "Honcho (Процедурный)", Type = "CustomBuilder", Path = "builders/HonchoBuilder.lua", Variant = nil, RootOffset = 6.35 },
+    { Id = "Honcho",        Label = "Honcho (Процедурный)",  Type = "CustomBuilder", Path = "builders/HonchoBuilder.lua",      Variant = nil,             RootOffset = 6.35 },
 }
-
 
 Registry.ModeModules = {
     { Id = "Locomotion",    Path = "modes/LocomotionMode.lua" },
@@ -78,7 +77,8 @@ Registry.MenuCategories = {
             { Type = "Toggle",  Text = "Свобода в катсценах (Камера + Ходьба)",       StateKey = "CutsceneFreedom", SyncId = "CutsceneFreedom" },
             { Type = "Section", Text = "PathfindNodes (Планировка и точки)" },
             { Type = "Button",  Text = "Открыть схему комнаты (Carpet / Мебель)",     ButtonText = "ROOM MAP",    Action = "OpenRoomMap", SyncId = "OpenRoomMap" },
-            { Type = "Button",  Text = "Поставить точку в моей позиции",              ButtonText = "ADD NODE",    Action = "AddNodeHere", SyncId = "AddNodeHere" },
+            { Type = "Button",  Text = "Поставить точку: КУРСОР (+) [ПКМ]",           ButtonText = "ADD NODE",    Action = "AddNodeHere", RightClickAction = "ToggleNodePlaceMode", SyncId = "AddNodeHere", DefaultBind = nil },
+            { Type = "Toggle",  Text = "Прицел-плюсик (+) для точек",                 StateKey = "CursorCrosshair", SyncId = "CursorCrosshair" },
             { Type = "Button",  Text = "Авто-маршрут по коврам (Carpet)",             ButtonText = "AUTO CARPET", Action = "AutoCarpet",  SyncId = "AutoCarpet" },
             { Type = "Button",  Text = "Запустить бег клона по точкам",              ButtonText = "START PATH",  ModeId = "Pathfind", AutoSpawn = "Close", SyncId = "Pathfind_nil", DefaultBind = Enum.KeyCode.F1, Color = Color3.fromRGB(76, 154, 204) },
             { Type = "Toggle",  Text = "Показывать 3D-шары точек в комнате",          StateKey = "PathMarkers" },
@@ -119,9 +119,9 @@ Registry.MenuCategories = {
             { Type = "Keybind", Text = "Режим толпы клонов",            SyncId = "MultiClone",  DefaultBind = Enum.KeyCode.U },
             { Type = "Keybind", Text = "Приседание",                    SyncId = "Crouch",      DefaultBind = Enum.KeyCode.T },
             { Type = "Keybind", Text = "Следить головой 360°",          SyncId = "HeadLook",    DefaultBind = Enum.KeyCode.K },
-            { Type = "Keybind", Text = "Дрожь статуи",                  SyncId = "Jitter",      DefaultBind = Enum.KeyCode.Y },
-            { Type = "Keybind", Text = "Удалить всех клонов",           SyncId = "RemoveAll",   DefaultBind = Enum.KeyCode.V },
-            { Type = "Section", Text = "Режимы и бой" },
+{ Type = "Keybind", Text = "Дрожь статуи",                  SyncId = "Jitter",      DefaultBind = Enum.KeyCode.Y },
+{ Type = "Keybind", Text = "Удалить всех клонов",           SyncId = "RemoveAll",   DefaultBind = Enum.KeyCode.V },
+{ Type = "Section", Text = "Режимы и бой" },
 { Type = "Keybind", Text = "Режим Зеркала",                 SyncId = "Mirror_nil",           DefaultBind = Enum.KeyCode.R },
 { Type = "Keybind", Text = "Хардкорная погоня",             SyncId = "HardcoreChase_nil",    DefaultBind = Enum.KeyCode.Q },
 { Type = "Keybind", Text = "Обычные догонялки",             SyncId = "Locomotion_Chase",    DefaultBind = Enum.KeyCode.N },
@@ -129,6 +129,7 @@ Registry.MenuCategories = {
 { Type = "Keybind", Text = "Режим Статуи",                  SyncId = "Statue_nil",           DefaultBind = Enum.KeyCode.H },
 { Type = "Keybind", Text = "Удар BoxingGloves",             SyncId = "Punch",                DefaultBind = Enum.KeyCode.O },
 { Type = "Section", Text = "Кастомные сценарии и камера" },
+{ Type = "Keybind", Text = "Поставить точку маршрута",      SyncId = "AddNodeHere",     DefaultBind = nil },
 { Type = "Keybind", Text = "Бег по точкам маршрута",        SyncId = "Pathfind_nil",    DefaultBind = Enum.KeyCode.F1 },
 { Type = "Keybind", Text = "Прямой бег + удар и убийство",  SyncId = "StraightRush",    DefaultBind = Enum.KeyCode.F2 },
 { Type = "Keybind", Text = "Опустить / Поднять предмет",    SyncId = "LowerTools",      DefaultBind = nil },
