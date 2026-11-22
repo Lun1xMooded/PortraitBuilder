@@ -1,11 +1,19 @@
 -- builders/HonchoBuilder.lua
--- Точный 3D-генератор Honcho с оригинальными MeshId и декалями из дампа (без бутылки и штампов)
+-- Точный 3D-генератор Honcho с оригинальными MeshId, точным Scale и декалями из дампа
 
 return function(variant)
     local model = Instance.new("Model")
     model.Name = "HonchoActorClone"
     model:SetAttribute("RootOffset", 6.35)
     model:SetAttribute("NoTools", true)
+
+    local MESH_SCALES = {
+        WoodHead   = Vector3.new(0.02581, 0.02581, 0.02581),
+        Papers     = Vector3.new(0.02581, 0.02581, 0.02581),
+        Face       = Vector3.new(0.02581, 0.02419, 0.02581),
+        Expression = Vector3.new(0.02181, 0.01909, 0.02581),
+    }
+    local BODY_SCALE = Vector3.new(0.24308, 0.24308, 0.24308)
 
     local parts = {}
 
@@ -30,7 +38,7 @@ return function(variant)
             local sm = Instance.new("SpecialMesh")
             sm.MeshType = Enum.MeshType.FileMesh
             sm.MeshId = meshId
-            sm.Scale = Vector3.new(1, 1, 1)
+            sm.Scale = MESH_SCALES[name] or BODY_SCALE
             sm.Parent = p
         end
 
@@ -83,14 +91,14 @@ return function(variant)
     P("Right Leg", Vector3.new(1.00,2.00,1.00), Color3.fromRGB(163,162,165), Enum.Material.Plastic, 1.00, CFrame.new(0.500,-2.000,0.000,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000))
     P("Left Leg", Vector3.new(1.00,2.00,1.00), Color3.fromRGB(163,162,165), Enum.Material.Plastic, 1.00, CFrame.new(-0.500,-2.000,0.000,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000))
 
-    -- 2. Торс и брюки с оригинальными MeshId
+    -- 2. Торс и брюки
     P("Pelvis", Vector3.new(2.88,0.86,0.24), Color3.fromRGB(77,74,103), Enum.Material.Fabric, 0.00, CFrame.new(0.000,-1.882,-0.100,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://118178032366130")
     P("PelvisLining", Vector3.new(2.41,0.34,0.24), Color3.fromRGB(60,58,81), Enum.Material.Fabric, 0.00, CFrame.new(0.000,-1.649,-0.104,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://75488742733120")
     P("LowerTorso", Vector3.new(2.80,0.71,0.16), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(0.000,-1.267,-0.119,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://139835356304384")
     P("MiddleTorso", Vector3.new(2.80,1.51,0.47), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(0.000,-0.294,-0.111,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://70487070931077")
     P("UpperTorso", Vector3.new(2.80,1.57,0.73), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(0.000,0.873,-0.110,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://76105738314059")
 
-    -- 3. Подтяжки (оригинальные 3D-меши тонких лямок!)
+    -- 3. Подтяжки
     P("LowerSuspenders", Vector3.new(1.97,0.30,0.30), Color3.fromRGB(191,128,128), Enum.Material.Cardboard, 0.00, CFrame.new(0.000,-1.110,-0.107,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://126199874864038")
     P("MiddleSuspenders", Vector3.new(1.99,1.29,0.53), Color3.fromRGB(191,128,128), Enum.Material.Cardboard, 0.00, CFrame.new(0.000,-0.348,-0.105,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://104657923149834")
     P("UpperSuspenders", Vector3.new(2.00,1.42,0.76), Color3.fromRGB(191,128,128), Enum.Material.Cardboard, 0.00, CFrame.new(0.000,0.969,-0.100,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://107318840825406")
@@ -99,14 +107,14 @@ return function(variant)
     P("SuspenderJoint", Vector3.new(0.63,0.72,0.11), Color3.fromRGB(95,81,75), Enum.Material.Leather, 0.00, CFrame.new(0.000,-0.324,0.087,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://117948165283138")
     P("SuspenderClips", Vector3.new(2.00,0.36,0.30), Color3.fromRGB(179,148,112), Enum.Material.Glass, 0.00, CFrame.new(0.000,-1.398,-0.103,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://101871542369664")
 
-    -- 4. Галстук с оригинальными MeshId
+    -- 4. Галстук
     P("TieTop", Vector3.new(0.59,0.49,0.11), Color3.fromRGB(89,89,138), Enum.Material.Leather, 0.00, CFrame.new(-0.000,1.230,-0.471,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://87178780263090")
     P("TieUpper", Vector3.new(0.50,0.63,0.09), Color3.fromRGB(89,89,138), Enum.Material.Leather, 0.00, CFrame.new(0.000,0.727,-0.471,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://103960932596077")
     P("TieMiddle", Vector3.new(0.63,0.63,0.09), Color3.fromRGB(89,89,138), Enum.Material.Leather, 0.00, CFrame.new(0.000,0.093,-0.471,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://129453078714949")
     P("TieLower", Vector3.new(0.64,0.63,0.09), Color3.fromRGB(89,89,138), Enum.Material.Leather, 0.00, CFrame.new(0.000,-0.540,-0.471,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://109245141563413")
     P("TieBottom", Vector3.new(0.64,0.58,0.09), Color3.fromRGB(89,89,138), Enum.Material.Leather, 0.00, CFrame.new(0.000,-1.145,-0.471,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://140719528715020")
 
-    -- 5. Воротник, шея и голова-планшет с оригинальными MeshId и декалями лица!
+    -- 5. Воротник, шея и голова-планшет с декалями лица
     P("NeckCuff", Vector3.new(1.85,0.58,0.99), Color3.fromRGB(183,185,193), Enum.Material.Fabric, 0.00, CFrame.new(0.000,1.541,-0.089,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://86130211772398")
     P("Neck", Vector3.new(1.22,0.29,0.72), Color3.fromRGB(0,0,0), Enum.Material.Neon, 0.00, CFrame.new(0.000,1.654,-0.094,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://75985353522068")
     P("Head", Vector3.new(1.76,1.77,0.24), Color3.fromRGB(17,17,17), Enum.Material.Neon, 0.00, CFrame.new(-0.000,2.719,-0.110,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000))
@@ -119,9 +127,9 @@ return function(variant)
     addDecal("Expression", "Mouth", "rbxassetid://126379035605248", Enum.NormalId.Right)
     addDecal("Face", "Coffee", "rbxassetid://7759657445", Enum.NormalId.Right)
 
-    -- 6. Левая и правая руки с оригинальными MeshId
+    -- 6. Левая и правая руки
     P("LeftShoulder", Vector3.new(1.79,1.11,0.15), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(-2.295,0.966,-0.104,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://96019671780855")
-    P("LeftUpperArm", Vector3.new(2.25,1.11,0.15), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(-2.522,0.966,-0.104,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://113166944665848")
+P("LeftUpperArm", Vector3.new(2.25,1.11,0.15), Color3.fromRGB(147,154,218), Enum.Material.Fabric, 0.00, CFrame.new(-2.522,0.966,-0.104,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://113166944665848")
 P("LeftElbowCuff", Vector3.new(0.68,1.28,0.26), Color3.fromRGB(165,173,245), Enum.Material.Fabric, 0.00, CFrame.new(-3.268,0.968,-0.104,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://117069753262347")
 P("LeftUpperWrist", Vector3.new(1.14,1.11,0.15), Color3.fromRGB(252,250,255), Enum.Material.Concrete, 0.00, CFrame.new(-4.025,0.966,-0.104,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://90409852703796")
 P("LeftUpperWristLining", Vector3.new(0.63,0.72,0.20), Color3.fromRGB(165,163,167), Enum.Material.Concrete, 0.00, CFrame.new(-4.052,1.194,-0.104,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://134132942960013")
@@ -136,7 +144,7 @@ P("RightUpperWristLining", Vector3.new(0.63,0.72,0.20), Color3.fromRGB(165,163,1
 P("RightLowerWrist", Vector3.new(1.23,1.11,0.15), Color3.fromRGB(252,250,255), Enum.Material.Concrete, 0.00, CFrame.new(5.012,0.966,-0.104,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://100905147085345")
 P("RightLowerWristLining", Vector3.new(0.16,0.59,0.20), Color3.fromRGB(165,163,167), Enum.Material.Concrete, 0.00, CFrame.new(4.757,1.260,-0.104,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://117285548185022")
 P("RightHand", Vector3.new(0.64,1.11,0.15), Color3.fromRGB(252,250,255), Enum.Material.Concrete, 0.00, CFrame.new(5.759,0.966,-0.104,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://108491148518063")
--- 7. Ноги и ботинки с оригинальными MeshId
+-- 7. Ноги и ботинки
 P("LeftUpperLeg", Vector3.new(1.27,1.17,0.33), Color3.fromRGB(77,74,103), Enum.Material.Fabric, 0.00, CFrame.new(-0.788,-2.713,-0.040,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://104586561338241")
 P("LeftMiddleLeg", Vector3.new(1.29,1.28,0.48), Color3.fromRGB(77,74,103), Enum.Material.Fabric, 0.00, CFrame.new(-0.785,-3.728,0.046,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://106917430543569")
 P("LeftLowerLeg", Vector3.new(1.32,1.28,0.71), Color3.fromRGB(77,74,103), Enum.Material.Fabric, 0.00, CFrame.new(-0.785,-4.789,0.089,1.000,-0.000,0.000,-0.000,1.000,0.000,0.000,0.000,1.000), "rbxassetid://92848143588823")
@@ -187,7 +195,8 @@ M("LeftUpperLeg", "Pelvis", "LeftUpperLeg", CFrame.new(-0.788,-0.369,-0.015,1.00
 M("LeftMiddleLeg", "LeftUpperLeg", "LeftMiddleLeg", CFrame.new(0.004,-0.478,-0.065,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), CFrame.new(0.000,0.538,-0.151,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000))
 M("LeftLowerLeg", "LeftMiddleLeg", "LeftLowerLeg", CFrame.new(0.000,-0.532,-0.146,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), CFrame.new(0.000,0.528,-0.189,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000))
 M("LeftAnkle", "LeftLowerLeg", "LeftAnkle", CFrame.new(0.000,-0.515,-0.210,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), CFrame.new(0.000,0.321,-0.217,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000))
-M("LeftFoot", "LeftAnkle", "LeftFoot", CFrame.new(-0.008,-0.282,-0.237,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000), CFrame.new(0.000,0.208,0.057,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000))
+M("LeftFoot", "LeftAnkle", "LeftFoot", CFrame.new(-0.008,-0.282,-0.237,1.000,0.000,0.000,0.000,1.000,0.000,0.000,
+0.000,1.000), CFrame.new(0.000,0.208,0.057,1.000,0.000,0.000,0.000,1.000,0.000,0.000,0.000,1.000))
 -- 9. Приварка декоративных деталей к костям
 W("Pelvis", "PelvisLining")
 W("LowerTorso", "LowerSuspenders")
