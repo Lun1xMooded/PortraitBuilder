@@ -183,7 +183,7 @@ a.Parent = customAnims
 end
 addAnim("idle",   "rbxassetid://18539828651")
 addAnim("walk",   "rbxassetid://18539834115")
-addAnim("sprint", "rbxassetid://8465893113")
+addAnim("sprint", "rbxassetid://18570706208")
 local stepSound = Instance.new("Sound")
 stepSound.Name = "FigusFootstep"
 stepSound.SoundId = "rbxassetid://8465836233"
