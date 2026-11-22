@@ -1,29 +1,9 @@
 -- modes/PathfindMode.lua
--- Одновременный запуск сценариев для всех клонов (спавн в одной точке + задержка старта + погоня друг за другом)
+-- Бег по маршрутам и погоня одного клона за другим с использованием глобального API.GetFloorY
 
 return function(API)
-    local Players = game:GetService("Players")
     local PathfindLib = API.GetService("Pathfind") or API.Import("libs/PathfindLib.lua")
-
     local cloneStates = {}
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.RespectCanCollide = true
-
-    local function getExactCloneFloorY(model, pos, fallbackY)
-        local ignore = {}
-        for _, entry in ipairs(API.GetAllClones()) do
-            if entry.model then table.insert(ignore, entry.model) end
-        end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character then table.insert(ignore, p.Character) end
-        end
-        rayParams.FilterDescendantsInstances = ignore
-
-        local off = model:GetAttribute("RootOffset") or 3.65
-        local hit = workspace:Raycast(Vector3.new(pos.X, fallbackY + 3.5, pos.Z), Vector3.new(0, -30, 0), rayParams)
-        return hit and (hit.Position.Y + off) or fallbackY
-    end
 
     local function updateEntryTracks(entry, speed, isSprintPace)
         local tr = entry.tracks
@@ -90,7 +70,6 @@ return function(API)
                     delayLeft = route and route.StartDelay or 0,
                 }
 
-                -- Если клон догоняет другого клона, берём стартовую точку того, кого он догоняет!
                 local spawnRoute = route
                 if route and #route.Nodes == 0 and route.ChaseCloneIdx then
                     spawnRoute = PathfindLib.GetRoute(route.ChaseCloneIdx)
@@ -101,8 +80,9 @@ return function(API)
                     local startPos = spawnRoute.Nodes[startIdx]
                     local nextIdx = (startIdx < #spawnRoute.Nodes) and (startIdx + 1) or (PathfindLib.LoopPath and 1 or startIdx)
                     local nextPos = spawnRoute.Nodes[nextIdx] or startPos
+                    local off = entry.model:GetAttribute("RootOffset") or 3.65
 
-                    local floorY = getExactCloneFloorY(entry.model, startPos, startPos.Y + 3.5)
+                    local floorY = API.GetFloorY(startPos, startPos.Y + off, true, off)
                     local lookFlat = (nextPos - startPos) * Vector3.new(1, 0, 1)
                     local spawnCF = (lookFlat.Magnitude > 0.05)
                         and CFrame.lookAt(Vector3.new(startPos.X, floorY, startPos.Z), Vector3.new(nextPos.X, floorY, nextPos.Z), Vector3.yAxis)
@@ -141,6 +121,7 @@ return function(API)
                 local m = entry.model
                 local r = m and (m.PrimaryPart or m:FindFirstChild("HumanoidRootPart"))
                 if m and m.Parent and r and entry.cframe then
+                    local off = m:GetAttribute("RootOffset") or 3.65
                     local st = cloneStates[entry]
                     if not st then
                         st = { currentIdx = 1, velocity = Vector3.zero, delayLeft = 0 }
@@ -198,7 +179,7 @@ return function(API)
                     if spd > 0.35 then
                         updateEntryTracks(entry, spd, sprintNow)
                         local nextPos = entry.cframe.Position + st.velocity * dt
-                        local floorY = getExactCloneFloorY(m, nextPos, entry.cframe.Position.Y)
+                        local floorY = API.GetFloorY(nextPos, entry.cframe.Position.Y, false, off)
                         local newCF = smoothLookCF(entry.cframe, Vector3.new(nextPos.X, floorY, nextPos.Z), st.velocity, dt)
                         entry.cframe = newCF
                         r.CFrame = newCF
