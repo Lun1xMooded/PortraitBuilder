@@ -7,6 +7,7 @@ return function(API)
 
     local baseWalk = API.Config.WalkSpeed or 14
     local baseSprint = API.Config.SprintSpeed or 24
+    local baseCrouch = API.Config.CrouchSpeed or 10
 
     local Mods = {
         UseCustomSpeed = false,
@@ -22,16 +23,34 @@ return function(API)
     getgenv().MemeLowerTools = false
 
     local Sliders = {
-        CustomSpeed   = { get = function() return Mods.CustomSpeed end,   set = function(v) Mods.CustomSpeed = v end },
-        KnockoutPower = { get = function() return Mods.KnockoutPower end, set = function(v) Mods.KnockoutPower = v end },
+        CustomSpeed = {
+            get = function() return Mods.CustomSpeed end,
+            set = function(v)
+                Mods.CustomSpeed = v
+                if Mods.UseCustomSpeed then
+                    API.Config.WalkSpeed = v
+                    API.Config.SprintSpeed = v
+                    API.Config.CrouchSpeed = v
+                end
+            end
+        },
+        KnockoutPower = {
+            get = function() return Mods.KnockoutPower end,
+            set = function(v) Mods.KnockoutPower = v end
+        },
     }
     getgenv().MemeCustomSliders = Sliders
 
     API.RegisterState("UseCustomSpeed", function() return Mods.UseCustomSpeed end, function(v)
         Mods.UseCustomSpeed = v
-        if not v then
+        if v then
+            API.Config.WalkSpeed = Mods.CustomSpeed
+            API.Config.SprintSpeed = Mods.CustomSpeed
+            API.Config.CrouchSpeed = Mods.CustomSpeed
+        else
             API.Config.WalkSpeed = baseWalk
             API.Config.SprintSpeed = baseSprint
+            API.Config.CrouchSpeed = baseCrouch
         end
     end)
 
@@ -66,6 +85,9 @@ return function(API)
         Mods.UseCustomSpeed = true
         Mods.AutoKnockout = true
         Mods.AlwaysGloves = true
+        API.Config.WalkSpeed = Mods.CustomSpeed
+        API.Config.SprintSpeed = Mods.CustomSpeed
+        API.Config.CrouchSpeed = Mods.CustomSpeed
         API.StartMode("Locomotion", "Straight", "Far")
         task.defer(function()
             API.AttachTool(false, Mods.LowerTools)
@@ -78,6 +100,7 @@ return function(API)
         if Mods.UseCustomSpeed then
             API.Config.WalkSpeed = Mods.CustomSpeed
             API.Config.SprintSpeed = Mods.CustomSpeed
+            API.Config.CrouchSpeed = Mods.CustomSpeed
         end
 
         local clone = API.GetClone()
@@ -122,6 +145,7 @@ return function(API)
         getgenv().MemeLowerTools = false
         API.Config.WalkSpeed = baseWalk
         API.Config.SprintSpeed = baseSprint
+        API.Config.CrouchSpeed = baseCrouch
         if stepConn then stepConn:Disconnect() end
     end)
 end
