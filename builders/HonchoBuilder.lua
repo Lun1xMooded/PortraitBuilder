@@ -32,9 +32,18 @@ end
 return function(variant, Import)
     local HonchoData = Import and Import("builders/honcho/HonchoData.lua")
     if not HonchoData then
-        warn("[HonchoBuilder] Не загрузился builders/honcho/HonchoData.lua!")
+        local url = "https://raw.githubusercontent.com/Lun1xMooded/PortraitBuilder/refs/heads/main/" .. tostring(os.time())
+        local ok, body = pcall(function() return game:HttpGet(url, true) end)
+        if ok and body and not body:find("404: Not Found") then
+            local fn = loadstring(body, "@HonchoData.lua")
+            if fn then HonchoData = fn() end
+        end
+    end
+    if not HonchoData then
+        warn("[HonchoBuilder] Не загрузился builders/honcho/HonchoData.lua! Проверь путь файла на GitHub.")
         return nil
     end
+
 
     local model = Instance.new("Model")
     model.Name = "HonchoActorClone"
