@@ -173,7 +173,7 @@ return function(API)
         if not root then return end
 
         local off = model:GetAttribute("RootOffset") or 3.65
-        local groundY = API.GetFloorY(sample.cf.Position, sample.cf.Position.Y + off, false, off)
+        local groundY = API.GetFloorY(sample.cf.Position, sample.cf.Position.Y, true, off)
         local finalY = groundY + sample.jumpHeight
         local newCF = CFrame.new(sample.cf.X, finalY, sample.cf.Z) * sample.cf.Rotation
 
