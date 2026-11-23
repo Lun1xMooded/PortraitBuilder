@@ -35,6 +35,13 @@ return function(Import, Config)
         return (k and Enum.KeyCode[k]) or info.Fallback
     end
 
+    local function isHighCustomRig(model)
+        if not model then return false end
+        return model:FindFirstChild("CustomAnimations") ~= nil
+            or model.Name:find("Honcho") ~= nil
+            or model.Name:find("Figus") ~= nil
+    end
+
     local ACTOR_LIST = Registry.ActorList
     local modeIdx = 1
     local multiCloneMode = false
@@ -131,6 +138,11 @@ return function(Import, Config)
     end
 
     local function solveHeadLookForEntry(entry, dt)
+        -- Блокируем поворот головы для Honcho и Figus
+        if isHighCustomRig(entry.model) then
+            return
+        end
+
         local neck = entry.neck
         local head = entry.head
         if not neck or not neck.Parent or not head or not head.Parent or not neck.Part0 then
@@ -173,6 +185,10 @@ return function(Import, Config)
             UIToggles.Crouch.Set(isCrouching, true)
         end
         for _, entry in ipairs(allClones) do
+            -- Игнорируем приседание для Honcho и Figus
+            if isHighCustomRig(entry.model) then
+                continue
+            end
             local tr = entry.tracks and entry.tracks.crouch
             if tr then
                 if isCrouching then
@@ -186,19 +202,10 @@ return function(Import, Config)
         end
     end
 
-        local function updateAnim(speed, sprint)
-        local isCustom = activeClone and activeClone:FindFirstChild("CustomAnimations") ~= nil
+    local function updateAnim(speed, sprint)
+        local isCustom = isHighCustomRig(activeClone)
 
-        if isCrouching and tracks.crouch then
-            if tracks.idle and tracks.idle.IsPlaying then tracks.idle:Stop(0.15) end
-            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
-            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
-            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
-            tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 15, 0.35, 1.3) or 0)
-            return
-        end
-
-        -- Для кастомных ригов (Honcho, Figus) запускаем строго ОДНУ анимацию без фонового смешивания!
+        -- Для кастомных ригов (Honcho, Figus) запускаем строго ОДНУ анимацию и игнорируем присед
         if isCustom then
             if speed > 0.5 then
                 if tracks.idle and tracks.idle.IsPlaying then tracks.idle:Stop(0.15) end
@@ -219,6 +226,15 @@ return function(Import, Config)
             return
         end
 
+        if isCrouching and tracks.crouch then
+            if tracks.idle and tracks.idle.IsPlaying then tracks.idle:Stop(0.15) end
+            if tracks.walk and tracks.walk.IsPlaying then tracks.walk:Stop(0.15) end
+            if tracks.sprint and tracks.sprint.IsPlaying then tracks.sprint:Stop(0.15) end
+            if not tracks.crouch.IsPlaying then tracks.crouch:Play(0.2, 1, 0) end
+            tracks.crouch:AdjustSpeed((speed > 0.4) and math.clamp(speed / 15, 0.35, 1.3) or 0)
+            return
+        end
+
         -- Стандартный блендинг для Portrait и R15 аватара
         if not tracks.walk then return end
         if not tracks.walk.IsPlaying then tracks.walk:Play(0.1, 0.001, 0.01) end
@@ -227,57 +243,54 @@ return function(Import, Config)
         if speed > 0.5 then
             if tracks.idle then tracks.idle:AdjustWeight(0.001) end
             local moveWeight = math.clamp(speed / Config.WalkSpeed, 0.05, 1)
-            if sprint and tracks.sprint then
-                tracks.walk:AdjustWeight(0.001)
-                tracks.sprint:AdjustWeight(moveWeight)
-                tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.65, 1.4))
-            else
-                if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
-                tracks.walk:AdjustWeight(moveWeight)
-                tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.55, 1.35))
-            end
-        else
-            if tracks.idle then tracks.idle:AdjustWeight(1) end
-            tracks.walk:AdjustWeight(0.001)
-            tracks.walk:AdjustSpeed(0.01)
-            if tracks.sprint then
-                tracks.sprint:AdjustWeight(0.001)
-                tracks.sprint:AdjustSpeed(0.01)
-            end
-        end
-    end
-
-
-    local function setMode(modeObj, sub)
-        if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
-            activeMode.OnDeactivate()
-        end
-        if activeMode == modeObj and activeSub == sub then
-            if activeMode and activeMode.OnDeactivate then
-                activeMode.OnDeactivate()
-            end
-            activeMode = nil
-            activeSub = nil
-            return
-        end
-        activeMode = modeObj
-        activeSub = sub
-        if activeMode and activeMode.OnActivate then
-            activeMode.OnActivate(sub)
-        end
-    end
-
-    local function removeAllClones()
-        if activeMode and activeMode.OnDeactivate then
-            activeMode.OnDeactivate()
-        end
-        activeMode = nil
-        activeSub = nil
-        cloneCF = nil
-        table.clear(cachedToolSyncs)
-        for _, entry in ipairs(allClones) do
-            if entry.tracks then
-                for _, t in pairs(entry.tracks) do
+if sprint and tracks.sprint then
+tracks.walk:AdjustWeight(0.001)
+tracks.sprint:AdjustWeight(moveWeight)
+tracks.sprint:AdjustSpeed(math.clamp(speed / Config.SprintSpeed, 0.65, 1.4))
+else
+if tracks.sprint then tracks.sprint:AdjustWeight(0.001) end
+tracks.walk:AdjustWeight(moveWeight)
+tracks.walk:AdjustSpeed(math.clamp(speed / Config.WalkSpeed, 0.55, 1.35))
+end
+else
+if tracks.idle then tracks.idle:AdjustWeight(1) end
+tracks.walk:AdjustWeight(0.001)
+tracks.walk:AdjustSpeed(0.01)
+if tracks.sprint then
+tracks.sprint:AdjustWeight(0.001)
+tracks.sprint:AdjustSpeed(0.01)
+end
+end
+end
+local function setMode(modeObj, sub)
+if activeMode and activeMode ~= modeObj and activeMode.OnDeactivate then
+activeMode.OnDeactivate()
+end
+if activeMode == modeObj and activeSub == sub then
+if activeMode and activeMode.OnDeactivate then
+activeMode.OnDeactivate()
+end
+activeMode = nil
+activeSub = nil
+return
+end
+activeMode = modeObj
+activeSub = sub
+if activeMode and activeMode.OnActivate then
+activeMode.OnActivate(sub)
+end
+end
+local function removeAllClones()
+if activeMode and activeMode.OnDeactivate then
+activeMode.OnDeactivate()
+end
+activeMode = nil
+activeSub = nil
+cloneCF = nil
+table.clear(cachedToolSyncs)
+for _, entry in ipairs(allClones) do
+if entry.tracks then
+for _, t in pairs(entry.tracks) do
 pcall(function() t:Stop() end)
 end
 end
