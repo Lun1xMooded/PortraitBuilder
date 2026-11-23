@@ -53,8 +53,8 @@ return function(API)
     -- Спавн клона сразу на первой точке записи при нажатии PLAY REPLAY, если клона ещё нет
     API.RegisterSpawnOverride("ReplayActor", function()
         local frames = Recordings[activeSlot]
-        if frames and #frames > 0 then
-            return frames.cf
+        if frames and frames[1] then
+            return frames[1].cf
         end
         return nil
     end)
@@ -140,13 +140,17 @@ return function(API)
     end)
 
     local function sampleTrack(frames, t)
-        if #frames == 0 then return nil end
-        if t <= frames.t then return frames end
-        if t >= frames[#frames].t then return frames[#frames] end
+        if not frames or #frames == 0 then return nil end
+        local firstFrame = frames[1]
+        local lastFrame = frames[#frames]
+        if not firstFrame or not lastFrame then return nil end
+
+        if t <= firstFrame.t then return firstFrame end
+        if t >= lastFrame.t then return lastFrame end
 
         for i = 1, #frames - 1 do
             local a, b = frames[i], frames[i + 1]
-            if t >= a.t and t <= b.t then
+            if a and b and t >= a.t and t <= b.t then
                 local alpha = (t - a.t) / math.max(0.0001, b.t - a.t)
                 return {
                     cf = a.cf:Lerp(b.cf, alpha),
@@ -159,7 +163,7 @@ return function(API)
                 }
             end
         end
-        return frames[#frames]
+        return lastFrame
     end
 
     local function applyFrameToClone(entry, sample, dt)
